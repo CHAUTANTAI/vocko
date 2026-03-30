@@ -1,16 +1,31 @@
 import { defineStore } from 'pinia'
-import { useStorage } from '@vueuse/core'
 
 export type AuthUser = { id: string; email: string; display_name: string }
 
-export const useAuthStore = defineStore('auth', () => {
-  const token = useStorage('vocko_at', '')
-  const refreshToken = useStorage('vocko_rt', '')
-  const user = useStorage<AuthUser | null>('vocko_user', null)
+const cookieBase = {
+  sameSite: 'lax' as const,
+  path: '/',
+}
 
-  const config = useRuntimeConfig()
+export const useAuthStore = defineStore('auth', () => {
+  const token = useCookie<string | null>('vocko_at', {
+    default: () => null,
+    maxAge: 60 * 60 * 12,
+    ...cookieBase,
+  })
+  const refreshToken = useCookie<string | null>('vocko_rt', {
+    default: () => null,
+    maxAge: 60 * 60 * 24 * 14,
+    ...cookieBase,
+  })
+  const user = useCookie<AuthUser | null>('vocko_user', {
+    default: () => null,
+    maxAge: 60 * 60 * 24 * 14,
+    ...cookieBase,
+  })
 
   async function login(email: string, password: string) {
+    const config = useRuntimeConfig()
     const data = await $fetch<{
       access_token: string
       refresh_token: string
@@ -25,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(email: string, password: string, display_name: string) {
+    const config = useRuntimeConfig()
     const data = await $fetch<{
       access_token: string
       refresh_token: string
@@ -39,14 +55,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
-    token.value = ''
-    refreshToken.value = ''
+    token.value = null
+    refreshToken.value = null
     user.value = null
   }
 
   async function tryRefresh(): Promise<boolean> {
     if (!refreshToken.value) return false
     try {
+      const config = useRuntimeConfig()
       const data = await $fetch<{ access_token: string; refresh_token: string }>(
         `${config.public.apiBase}/auth/refresh`,
         { method: 'POST', body: { refresh_token: refreshToken.value } },

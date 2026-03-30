@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nuxi dev",
+    "dev": "nuxi dev --host 127.0.0.1 --port 3000",
     "build": "nuxi build",
     "start": "nuxi start"
   },
