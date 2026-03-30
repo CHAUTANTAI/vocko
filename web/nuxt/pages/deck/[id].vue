@@ -61,6 +61,16 @@
               <p v-if="errors[0]" class="mt-1 text-xs text-red-400">{{ errors[0] }}</p>
             </Field>
           </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-400">Hint (optional)</label>
+            <Field name="hint" v-slot="{ field }">
+              <input
+                v-bind="field"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                placeholder="Shown during study if set"
+              />
+            </Field>
+          </div>
           <button
             type="submit"
             class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
@@ -118,7 +128,13 @@ const { api } = useApi()
 
 const deck = ref<Record<string, unknown> | null>(null)
 const cards = ref<
-  { _id: string; front?: { content?: string }; back?: { content?: string }; tags?: string[] }[]
+  {
+    _id: string
+    front?: { content?: string }
+    back?: { content?: string }
+    hint?: string
+    tags?: string[]
+  }[]
 >([])
 const showAdd = ref(false)
 const pending = ref(true)
@@ -128,6 +144,7 @@ const cardSchema = toTypedSchema(
   yup.object({
     front: yup.string().min(1, 'Front is required').required(),
     back: yup.string().min(1, 'Back is required').required(),
+    hint: yup.string().optional(),
   }),
 )
 
@@ -167,13 +184,16 @@ async function fetchDeck() {
 onMounted(fetchDeck)
 watch(() => route.params.id, fetchDeck)
 
-async function addCard(values: { front: string; back: string }) {
+async function addCard(values: { front: string; back: string; hint?: string }) {
+  const body: Record<string, unknown> = {
+    front: { content: values.front },
+    back: { content: values.back },
+  }
+  const h = values.hint?.trim()
+  if (h) body.hint = h
   await api(`/decks/${route.params.id}/cards`, {
     method: 'POST',
-    body: {
-      front: { content: values.front },
-      back: { content: values.back },
-    },
+    body,
   })
   showAdd.value = false
   await fetchDeck()

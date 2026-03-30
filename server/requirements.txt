@@ -4,7 +4,7 @@ pydantic
 python-dotenv
 pymongo
 PyJWT
-passlib[bcrypt]
+bcrypt>=4.2.0
 slowapi
 pytest
 httpx

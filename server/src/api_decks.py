@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from pydantic import BaseModel
 from .db import db
@@ -48,6 +50,7 @@ class CardCreate(BaseModel):
     media: list = []
     order_index: int = 0
     tags: list = []
+    hint: Optional[str] = None
 
 @router.get("/decks")
 def list_decks(page: int = 1, page_size: int = 50, user=Depends(get_current_user)):

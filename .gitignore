@@ -7,3 +7,10 @@ server/.env
 web/nuxt/node_modules/
 web/nuxt/.output/
 web/nuxt/.nuxt/
+
+# GitNexus local index
+.gitnexus/
+.cursor
+.claude
+.gitnexusignore
+docs/
