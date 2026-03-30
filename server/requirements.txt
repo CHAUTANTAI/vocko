@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+pymongo
+PyJWT
+passlib[bcrypt]
+slowapi
+pytest
+httpx

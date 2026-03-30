@@ -1,0 +1,25 @@
+{
+  "name": "vocko-nuxt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxi dev",
+    "build": "nuxi build",
+    "start": "nuxi start"
+  },
+  "dependencies": {
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "@pinia/nuxt": "^0.9.0",
+    "@vee-validate/nuxt": "^4.15.0",
+    "@vee-validate/yup": "^4.15.0",
+    "@vueuse/core": "^12.0.0",
+    "@vueuse/motion": "^2.2.6",
+    "fuse.js": "^7.0.0",
+    "lucide-vue-next": "^0.468.0",
+    "nuxt": "^3.14.0",
+    "pinia": "^2.3.0",
+    "vee-validate": "^4.15.0",
+    "yup": "^1.6.0"
+  }
+}

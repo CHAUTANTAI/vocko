@@ -1,0 +1,9 @@
+# Python
+server/.venv/
+server/__pycache__/
+server/.env
+
+# Node/Nuxt
+web/nuxt/node_modules/
+web/nuxt/.output/
+web/nuxt/.nuxt/
