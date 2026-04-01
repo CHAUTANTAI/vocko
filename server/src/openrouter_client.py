@@ -3,14 +3,64 @@
 import json
 import logging
 import os
+import re
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
+_OR_HTTP_ERR = re.compile(r"OpenRouter HTTP (\d+):", re.IGNORECASE)
+
+
+def http_status_for_openrouter_error(
+    message: str, *, default_for_unknown: int = 400
+) -> int:
+    """
+    Map error strings from chat_completion (and similar) to an HTTP status for API responses.
+    429 from the provider is surfaced as 429 so clients can retry or show rate-limit messaging.
+
+    default_for_unknown: use 400 for validation-style errors (e.g. tag suggest); use 503 when the
+    endpoint only fails due to the AI pipeline (hints / explain).
+    """
+    if not (message or "").strip():
+        return 503
+    el = message.lower()
+    m = _OR_HTTP_ERR.match(message.strip())
+    if m:
+        code = int(m.group(1))
+        if code == 429:
+            return 429
+        if code >= 500:
+            return 502
+        return 503
+    if "openrouter" in el:
+        return 503
+    if "timed out" in el:
+        return 503
+    return default_for_unknown
+
 DEFAULT_BASE = "https://openrouter.ai/api/v1"
 TIMEOUT = 25.0
+
+# OpenRouter auto-routes to a free model; use with X-OpenRouter-Only-Free (see _openrouter_extra_headers).
+MODEL_OPENROUTER_FREE = "openrouter/free"
+
+
+def _openrouter_extra_headers(for_model: str) -> dict[str, str]:
+    """
+    OpenRouter: pair model openrouter/free with X-OpenRouter-Only-Free (always sent for that model id).
+    OPENROUTER_ONLY_FREE=1 forces the header for any model id; =0 skips it except for openrouter/free.
+    """
+    m = (for_model or "").strip().lower()
+    env = os.getenv("OPENROUTER_ONLY_FREE", "").strip().lower()
+    if m == MODEL_OPENROUTER_FREE:
+        return {"X-OpenRouter-Only-Free": "true"}
+    if env in ("0", "false", "no"):
+        return {}
+    if env in ("1", "true", "yes"):
+        return {"X-OpenRouter-Only-Free": "true"}
+    return {}
 
 
 def _openrouter_error_message(r: httpx.Response) -> str:
@@ -71,6 +121,7 @@ def chat_completion(
         "Content-Type": "application/json",
         "HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER", "https://localhost"),
         "X-Title": os.getenv("OPENROUTER_APP_TITLE", "VocKO"),
+        **_openrouter_extra_headers(model),
     }
     body: dict[str, Any] = {
         "model": model,
@@ -83,7 +134,7 @@ def chat_completion(
             if r.status_code >= 400:
                 msg = _openrouter_error_message(r)
                 logger.warning("OpenRouter %s for model %s: %s", r.status_code, model, msg)
-                return None, msg
+                return None, f"OpenRouter HTTP {r.status_code}: {msg}"
             try:
                 data = r.json()
             except json.JSONDecodeError:
@@ -104,7 +155,7 @@ def chat_completion(
         return None, "OpenRouter request timed out"
     except httpx.HTTPError as e:
         logger.warning("OpenRouter HTTP error for model %s: %s", model, e)
-        return None, str(e) or "Network error calling OpenRouter"
+        return None, f"OpenRouter network error: {e}"
     except (KeyError, TypeError, ValueError) as e:
         logger.warning("OpenRouter parse error for model %s: %s", model, e)
         return None, "Unexpected response shape from OpenRouter"

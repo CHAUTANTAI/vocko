@@ -7,10 +7,10 @@ import textwrap
 
 from .openrouter_client import chat_completion
 
-# Hint = Mistral; grading = Llama (separate OpenRouter models, see .env.example).
-# Avoid legacy :free slugs with no routes (e.g. mistral-7b-instruct:free → 404).
-DEFAULT_MODEL_HINT = "mistralai/mistral-small-24b-instruct-2501"
-DEFAULT_MODEL_GRADE = "meta-llama/llama-3.1-8b-instruct"
+# Default: OpenRouter free auto-router (see openrouter_client.MODEL_OPENROUTER_FREE + X-OpenRouter-Only-Free).
+# Override with OPENROUTER_MODEL_HINT / OPENROUTER_MODEL_GRADE for explicit model ids.
+DEFAULT_MODEL_HINT = "openrouter/free"
+DEFAULT_MODEL_GRADE = "openrouter/free"
 
 
 def _model_hint() -> str:
@@ -154,3 +154,50 @@ def grade_answer(
     note = obj.get("note")
     note_s = str(note).strip()[:500] if note is not None else None
     return correct, note_s or None
+
+
+def generate_explain(
+    *,
+    front_text: str,
+    expected_back: str,
+    card_type: str | None,
+    tag_names: list[str],
+    recent_incorrect: int,
+) -> tuple[str | None, str | None]:
+    """Short coach explanation (Phase 4). Returns (text, error)."""
+    front = (front_text or "").strip()
+    back = (expected_back or "").strip()
+    if not front:
+        return None, "Card front is empty"
+    tags_s = ", ".join(tag_names) if tag_names else "(none)"
+    ct = (card_type or "vocab").strip()
+    system = textwrap.dedent(
+        """
+        You are a concise language tutor. Explain in 2–4 short sentences why the expected answer fits,
+        and one tip to remember it. Do not repeat the learner's wrong answer verbatim.
+        Reply in plain text, no JSON.
+        """
+    ).strip()
+    user = textwrap.dedent(
+        f"""
+        Card type: {ct}
+        Tags: {tags_s}
+        Recent incorrect attempts on this card (same user): {recent_incorrect}
+
+        Front: {front}
+        Expected back: {back}
+
+        Give a helpful mini-explanation.
+        """
+    ).strip()
+    raw, err = chat_completion(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        model=_model_hint(),
+        temperature=0.4,
+    )
+    if err:
+        return None, err
+    if not raw:
+        return None, "Empty explanation from model"
+    text = raw.strip()
+    return (text, None) if text else (None, "Empty explanation from model")

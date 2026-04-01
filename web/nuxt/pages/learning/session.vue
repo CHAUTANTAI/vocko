@@ -52,6 +52,48 @@
         </button>
       </div>
 
+      <p
+        v-if="deckEmptyBlocked && !sessionId"
+        class="mt-4 rounded-lg border border-amber-900/40 bg-amber-950/25 px-3 py-2 text-sm text-amber-100/90"
+      >
+        This deck has no cards yet. Add cards in the deck editor, then start a session.
+        <NuxtLink
+          :to="`/deck/${deckId}`"
+          class="ml-1 font-medium text-emerald-400 underline hover:text-emerald-300"
+        >
+          Open deck
+        </NuxtLink>
+      </p>
+
+      <label
+        v-if="!sessionId"
+        class="mt-3 flex cursor-pointer select-none items-start gap-2 text-sm text-slate-400"
+      >
+        <input
+          v-model="smartQueue"
+          type="checkbox"
+          class="mt-0.5 rounded border-slate-600 bg-slate-900 text-emerald-600 focus:ring-emerald-500/40"
+        />
+        <span>
+          <span class="text-slate-300">{{ smartQueueTitle }}</span>
+          <span
+            v-if="mode === 'learn' && smartQueue"
+            class="mt-1 block text-xs leading-relaxed text-slate-500"
+          >
+            Weak = due cards with tags you miss often or &ldquo;hard&rdquo; difficulty; new = no reviews yet;
+            easy = due + high grades recently + stable ease. Target ~70/20/10 when enough cards exist; the
+            server may add more via round-robin or random fill.
+          </span>
+          <span
+            v-else-if="mode === 'review' && smartQueue"
+            class="mt-1 block text-xs leading-relaxed text-slate-500"
+          >
+            Only <strong class="font-medium text-slate-400">due</strong> cards. Order: weak tags / hard bucket
+            first, then by due date. This is <em>not</em> the 70/20/10 learn mix.
+          </span>
+        </span>
+      </label>
+
       <div v-if="!sessionId" class="mt-6">
         <button
           type="button"
@@ -63,7 +105,14 @@
         <p v-if="sessionError" class="mt-2 text-sm text-red-400">{{ sessionError }}</p>
       </div>
 
-      <div v-else class="mt-6">
+      <p
+        v-if="sessionId && queueMetaLine"
+        class="mt-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2 text-xs leading-relaxed text-slate-400"
+      >
+        {{ queueMetaLine }}
+      </p>
+
+      <div v-if="sessionId" class="mt-6">
         <div v-if="question">
           <div class="relative">
             <label
@@ -202,6 +251,15 @@
                   <Lightbulb class="h-4 w-4 text-amber-400" aria-hidden="true" />
                   {{ hintLoading ? 'Hint…' : 'Hint' }}
                 </button>
+                <button
+                  v-if="gradedRoundActive && !resultOk"
+                  type="button"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+                  :disabled="explainLoading"
+                  @click="fetchExplain"
+                >
+                  {{ explainLoading ? 'Explain…' : 'Explain (AI)' }}
+                </button>
               </div>
               <button
                 type="button"
@@ -232,6 +290,13 @@
               {{ resultLabel }}
             </p>
             <p v-if="resultNote" class="text-xs text-slate-500">{{ resultNote }}</p>
+            <div
+              v-if="gradedRoundActive && !resultOk && (explainText || explainError)"
+              class="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2 text-sm text-slate-300"
+            >
+              <p class="text-xs font-medium text-slate-500">AI explanation</p>
+              <p class="mt-1 whitespace-pre-wrap">{{ explainError || explainText }}</p>
+            </div>
           </div>
         </div>
 
@@ -333,9 +398,20 @@ type AnswerApi = {
   card_back?: { content?: string }
 }
 
+type QueueMeta = {
+  strategy?: string
+  mode?: string
+  counts?: Record<string, number>
+  note?: string
+}
+
 const deckId = computed(() => (route.query.deck_id as string) || '')
+/** True only after successful GET /decks/:id with card_count === 0. On fetch error, stays false so Start is allowed. */
+const deckEmptyBlocked = ref(false)
 const mode = ref<'learn' | 'review'>('learn')
+const smartQueue = ref(true)
 const sessionId = ref('')
+const queueMeta = ref<QueueMeta | null>(null)
 const question = ref<Q | null>(null)
 const answer = ref('')
 const resultLabel = ref('')
@@ -363,7 +439,43 @@ const revealedBack = ref<{ content?: string } | null>(null)
 const sessionAnswered = ref(0)
 const sessionCorrect = ref(0)
 
+const explainText = ref('')
+const explainError = ref('')
+const explainLoading = ref(false)
+
 let advanceTimerId: ReturnType<typeof setTimeout> | null = null
+
+const smartQueueTitle = computed(() => {
+  if (!smartQueue.value) {
+    return mode.value === 'review'
+      ? 'Classic review: due cards, oldest due first'
+      : 'Classic learn: new (shuffled) then due, then fill'
+  }
+  return mode.value === 'review'
+    ? 'Smart review: prioritize weak tags / hard due cards'
+    : 'Smart learn: ~70% weak-priority · 20% new · 10% easy'
+})
+
+const queueMetaLine = computed(() => {
+  const m = queueMeta.value
+  if (!m?.counts) return ''
+  const c = m.counts
+  const parts: string[] = []
+  if (m.strategy === 'smart' && m.mode === 'learn') {
+    parts.push(`${c.weak ?? 0} weak-priority`, `${c.new ?? 0} new`, `${c.easy ?? 0} easy`)
+    if ((c.fill ?? 0) > 0) parts.push(`${c.fill} fill`)
+  } else if (m.strategy === 'smart' && m.mode === 'review') {
+    parts.push(`${c.due ?? c.total ?? 0} due`)
+    if ((c.priority_high ?? 0) > 0) parts.push(`${c.priority_high} high-priority`)
+  } else {
+    if ((c.new ?? 0) > 0) parts.push(`${c.new} new`)
+    if ((c.due ?? 0) > 0) parts.push(`${c.due} due`)
+    if ((c.fill ?? 0) > 0) parts.push(`${c.fill} fill`)
+    if (parts.length === 0) parts.push('composition n/a')
+  }
+  const total = c.total ?? '?'
+  return `Queue (${m.strategy}, ${m.mode}): ${parts.join(' · ')} · total ${total}.`
+})
 
 const questionFront = computed(() => question.value?.front?.content ?? '—')
 
@@ -413,6 +525,8 @@ function clearGradeUi() {
   progressVisible.value = false
   cardFlipped.value = false
   revealedBack.value = null
+  explainText.value = ''
+  explainError.value = ''
 }
 
 function toggleCardFlip() {
@@ -442,34 +556,70 @@ onUnmounted(() => {
   cancelAdvanceTimer()
 })
 
+function apiErrorDetail(err: unknown): string | null {
+  if (!err || typeof err !== 'object') return null
+  const o = err as Record<string, unknown>
+  const data = o.data as Record<string, unknown> | undefined
+  const detail = data?.detail
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    const row = detail[0] as { msg?: string } | undefined
+    if (row?.msg) return row.msg
+  }
+  return null
+}
+
+async function refreshDeckEmptyGate() {
+  deckEmptyBlocked.value = false
+  const id = deckId.value
+  if (!id) return
+  try {
+    const data = await api<{ deck: { card_count?: number } }>(`/decks/${id}`)
+    const c = Number(data.deck?.card_count ?? 0)
+    deckEmptyBlocked.value = c === 0
+  } catch {
+    deckEmptyBlocked.value = false
+  }
+}
+
+watch(deckId, refreshDeckEmptyGate, { immediate: true })
+
 async function startSession() {
+  if (deckEmptyBlocked.value) return
   sessionError.value = ''
   summary.value = null
   reviewItems.value = []
   answer.value = ''
+  queueMeta.value = null
   clearGradeUi()
   cancelAdvanceTimer()
   sessionAnswered.value = 0
   sessionCorrect.value = 0
   try {
-    const data = await api<{ session_id: string; preloaded_questions: Q[] }>('/learning/sessions', {
+    const data = await api<{
+      session_id: string
+      preloaded_questions: Q[]
+      queue_meta?: QueueMeta
+    }>('/learning/sessions', {
       method: 'POST',
       body: {
         deck_id: deckId.value,
         mode: mode.value,
-        options: { queue_size: 30 },
+        options: { queue_size: 30, smart_queue: smartQueue.value },
       },
     })
     sessionId.value = data.session_id
+    queueMeta.value = data.queue_meta ?? null
     const first = data.preloaded_questions?.[0]
     question.value = first || null
     clearHintForCard()
     if (!first) {
       sessionError.value = 'No cards in queue for this mode. Try Learn or add cards.'
       sessionId.value = ''
+      queueMeta.value = null
     }
-  } catch {
-    sessionError.value = 'Could not start session'
+  } catch (e: unknown) {
+    sessionError.value = apiErrorDetail(e) ?? 'Could not start session'
   }
 }
 
@@ -482,6 +632,36 @@ async function getNext() {
   clearHintForCard()
   if (!data.question) {
     await finish()
+  }
+}
+
+async function fetchExplain() {
+  if (!question.value || !deckId.value) return
+  explainLoading.value = true
+  explainError.value = ''
+  explainText.value = ''
+  try {
+    const data = await api<{ explanation: string }>('/learning/explain', {
+      method: 'POST',
+      body: { card_id: question.value.card_id, deck_id: deckId.value },
+    })
+    explainText.value = data.explanation
+  } catch (e: unknown) {
+    const fe = e as { data?: { detail?: string | { msg?: string }[] } }
+    const d = fe.data?.detail
+    if (typeof d === 'string') {
+      explainError.value =
+        d.includes('OPENROUTER') || d.includes('503')
+          ? 'AI explain needs the server API key configured. Ask your admin or try again later.'
+          : d
+    } else if (Array.isArray(d)) {
+      explainError.value =
+        d.map((x) => x.msg ?? '').filter(Boolean).join(' ') || 'Could not load explanation'
+    } else {
+      explainError.value = 'Could not load explanation'
+    }
+  } finally {
+    explainLoading.value = false
   }
 }
 
@@ -546,14 +726,16 @@ async function submit() {
     })
     resultOk.value = data.result === 'correct'
     if (data.result === 'correct') {
-      if (data.match_type === 'llm') resultLabel.value = 'Correct (close match)'
-      else if (data.match_type === 'typo_one') resultLabel.value = 'Correct (one typo)'
+      const mt = data.match_type
+      if (mt === 'synonym' || mt === 'llm') resultLabel.value = 'Correct (close match)'
+      else if (mt === 'typo' || mt === 'typo_one') resultLabel.value = 'Correct (one typo)'
       else resultLabel.value = 'Correct'
     } else {
       resultLabel.value = 'Incorrect'
     }
     const parts: string[] = []
-    if (data.match_type === 'llm' && data.result === 'correct') parts.push('Graded with AI')
+    const mtOk = data.match_type
+    if ((mtOk === 'synonym' || mtOk === 'llm') && data.result === 'correct') parts.push('Graded with AI')
     if (data.note) parts.push(data.note)
     resultNote.value = parts.join(' · ')
 
@@ -561,8 +743,9 @@ async function submit() {
     if (typeof data.session_correct === 'number') sessionCorrect.value = data.session_correct
 
     submittedDisplay.value = answer.value.trim()
+    const mtH = data.match_type
     typoHighlight.value =
-      data.match_type === 'typo_one' && data.typo_highlight ? data.typo_highlight : null
+      (mtH === 'typo' || mtH === 'typo_one') && data.typo_highlight ? data.typo_highlight : null
 
     revealedBack.value = data.card_back ?? { content: undefined }
 
@@ -595,6 +778,7 @@ async function finish() {
 function resetSession() {
   cancelAdvanceTimer()
   sessionId.value = ''
+  queueMeta.value = null
   question.value = null
   summary.value = null
   reviewItems.value = []
@@ -603,6 +787,7 @@ function resetSession() {
   clearGradeUi()
   sessionAnswered.value = 0
   sessionCorrect.value = 0
+  void refreshDeckEmptyGate()
 }
 </script>
 
