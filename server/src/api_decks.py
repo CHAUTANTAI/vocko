@@ -1,7 +1,9 @@
+import re
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 from bson.errors import InvalidId
 import datetime
@@ -11,6 +13,46 @@ from .db import db
 from .utils import decode_token
 
 router = APIRouter()
+
+
+def _slugify_tag(name: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", name.lower().strip())
+    s = s.strip("-")
+    return s or "tag"
+
+
+def _extra_tag_ids_from_new_names(new_names: list) -> list[str]:
+    """Find-or-create tags by slug; returns ObjectId strings (same as api_tags slugify)."""
+    ids: list[str] = []
+    seen_slug: set[str] = set()
+    for nm in new_names or []:
+        if not isinstance(nm, str):
+            continue
+        nm = nm.strip()
+        if not nm or len(nm) > 200:
+            continue
+        slug = _slugify_tag(nm)
+        if not slug or slug in seen_slug:
+            continue
+        seen_slug.add(slug)
+        ex = db.tags.find_one({"slug": slug})
+        if ex:
+            ids.append(str(ex["_id"]))
+            continue
+        try:
+            ins = db.tags.insert_one({"name": nm, "slug": slug})
+            ids.append(str(ins.inserted_id))
+        except DuplicateKeyError:
+            ex2 = db.tags.find_one({"slug": slug})
+            if ex2:
+                ids.append(str(ex2["_id"]))
+    return ids
+
+
+def _merged_tag_ids(tag_ids: list, new_names: list) -> list[str]:
+    base = [str(x) for x in (tag_ids or []) if x]
+    extra = _extra_tag_ids_from_new_names(new_names)
+    return list(dict.fromkeys(base + extra))
 
 
 def _require_owned_card(card_id: str, owner_id: str):
@@ -62,6 +104,10 @@ class CardCreate(BaseModel):
     part_of_speech: Optional[str] = None
     language: str = "en"
     tag_ids: list = []
+    new_tag_names: list[str] = Field(
+        default_factory=list,
+        description="Display names for tags to create on save (e.g. from AI suggest); find-or-create by slug.",
+    )
 
 
 @router.get("/decks")
@@ -135,12 +181,13 @@ def create_card(deck_id: str, card: CardCreate, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Deck not found or not owned")
     raw = card.dict()
     tag_ids = raw.pop("tag_ids", []) or []
+    new_names = raw.pop("new_tag_names", None) or []
     doc = flashcard_doc_from_payload(raw)
     doc["deck_id"] = deck_id
     doc["created_at"] = datetime.datetime.utcnow()
     result = db.flashcards.insert_one(doc)
     cid = result.inserted_id
-    set_card_tags(db, cid, tag_ids)
+    set_card_tags(db, cid, _merged_tag_ids(tag_ids, new_names))
     inserted = db.flashcards.find_one({"_id": cid})
     return {"card": serialize_card(db, inserted)}
 
@@ -150,12 +197,13 @@ def update_card(card_id: str, card: CardCreate, user=Depends(get_current_user)):
     _, cid = _require_owned_card(card_id, user["user_id"])
     raw = card.dict()
     tag_ids = raw.pop("tag_ids", []) or []
+    new_names = raw.pop("new_tag_names", None) or []
     doc = flashcard_doc_from_payload(raw)
     update: dict = {"$set": doc}
     if "part_of_speech" not in doc:
         update["$unset"] = {"part_of_speech": ""}
     db.flashcards.update_one({"_id": cid}, update)
-    set_card_tags(db, cid, tag_ids)
+    set_card_tags(db, cid, _merged_tag_ids(tag_ids, new_names))
     inserted = db.flashcards.find_one({"_id": cid})
     return {"card": serialize_card(db, inserted)}
 

@@ -56,8 +56,9 @@ def serialize_card(db: Any, card: dict) -> dict:
 
 def flashcard_doc_from_payload(data: dict) -> dict:
     """Apply defaults; deck is content context (no per-card source)."""
-    d = {k: v for k, v in data.items() if k != "tag_ids"}
+    d = {k: v for k, v in data.items() if k not in ("tag_ids", "new_tag_names")}
     d.pop("tag_ids", None)
+    d.pop("new_tag_names", None)
     d.pop("source_id", None)
     d.setdefault("card_type", "vocab")
     d.setdefault("language", "en")

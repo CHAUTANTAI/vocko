@@ -1,9 +1,10 @@
 """Global tags (roadmap Phase 0)."""
 
 import re
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from bson import ObjectId
 from bson.errors import InvalidId
 
@@ -41,6 +42,10 @@ class TagSuggestRequest(BaseModel):
     back: str | None = None
     card_type: str = "vocab"
     max_tags: int = 6
+    part_of_speech: Optional[str] = Field(
+        default=None,
+        description="If card_type is vocab, learner-chosen POS for context only (not emitted as a tag).",
+    )
 
 
 @router.get("/tags")
@@ -53,12 +58,13 @@ def list_tags(user=Depends(get_current_user)):
 
 @router.post("/tags/suggest")
 def suggest_tags(body: TagSuggestRequest, user=Depends(get_current_user)):
-    tags, err = suggest_and_upsert_tags(
+    tags, pending_new, err = suggest_and_upsert_tags(
         db,
         front=body.front,
         back=body.back,
         card_type=body.card_type,
         max_tags=body.max_tags,
+        part_of_speech=body.part_of_speech,
         slugify_fn=slugify,
     )
     if err:
@@ -66,7 +72,7 @@ def suggest_tags(body: TagSuggestRequest, user=Depends(get_current_user)):
             status_code=http_status_for_openrouter_error(err),
             detail=err,
         )
-    return {"tags": tags}
+    return {"tags": tags, "pending_new": pending_new}
 
 
 @router.post("/tags")

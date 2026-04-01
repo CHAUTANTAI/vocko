@@ -262,12 +262,36 @@
                 >
                   <input v-model="selectedTagIds" type="checkbox" :value="t._id" class="rounded border-slate-600" />
                   {{ t.name }}
-                  <span v-if="tagIdsCreatedByAi.has(t._id)" class="text-[10px] text-emerald-500/90">new</span>
                 </label>
               </div>
+              <div
+                v-if="pendingNewTagNames.length"
+                class="mt-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-2 py-2"
+              >
+                <p class="text-[10px] font-medium uppercase tracking-wide text-amber-200/80">
+                  New tags (created when you save the card)
+                </p>
+                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                  <span
+                    v-for="nm in pendingNewTagNames"
+                    :key="nm"
+                    class="inline-flex items-center gap-1 rounded-md border border-amber-800/60 bg-slate-950/50 px-2 py-0.5 text-xs text-amber-100/90"
+                  >
+                    {{ nm }}
+                    <button
+                      type="button"
+                      class="rounded px-0.5 text-amber-300/80 hover:bg-amber-900/40 hover:text-amber-100"
+                      aria-label="Remove suggested tag"
+                      @click="removePendingNewTag(nm)"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </div>
+              </div>
               <p class="mt-1 text-xs text-slate-500">
-                Smart study uses tags for weak-topic priority. Use AI to propose tags from the front/back; you
-                can edit before saving. Deck title is your content context (no separate source).
+                AI matches existing tags only; new names are added when you save the card, not during suggest.
+                Deck title is your content context.
               </p>
             </div>
             <div>
@@ -396,7 +420,8 @@ const searchQuery = ref('')
 const cardTypeLive = ref('vocab')
 const tagSuggestLoading = ref(false)
 const tagSuggestMessage = ref('')
-const tagIdsCreatedByAi = ref<Set<string>>(new Set())
+/** AI-suggested tag names not yet in DB; sent as new_tag_names on save. */
+const pendingNewTagNames = ref<string[]>([])
 
 type DeckStats = {
   study_records_total: number
@@ -555,8 +580,12 @@ function resetCardFormState() {
   resetForm({ values: { ...cardFormInitial } })
   cardTypeLive.value = 'vocab'
   selectedTagIds.value = []
-  tagIdsCreatedByAi.value = new Set()
+  pendingNewTagNames.value = []
   tagSuggestMessage.value = ''
+}
+
+function removePendingNewTag(name: string) {
+  pendingNewTagNames.value = pendingNewTagNames.value.filter((n) => n !== name)
 }
 
 function toggleAddForm() {
@@ -584,7 +613,7 @@ function openEditCard(card: CardRow) {
     },
   })
   selectedTagIds.value = [...(card.tag_ids ?? [])]
-  tagIdsCreatedByAi.value = new Set()
+  pendingNewTagNames.value = []
   tagSuggestMessage.value = ''
 }
 
@@ -608,7 +637,8 @@ async function runTagSuggest() {
   tagSuggestMessage.value = ''
   try {
     const data = await api<{
-      tags: { _id: string; name: string; slug?: string; created?: boolean }[]
+      tags: { _id: string; name: string; slug?: string }[]
+      pending_new?: { name: string; slug?: string }[]
     }>('/tags/suggest', {
       method: 'POST',
       body: {
@@ -616,18 +646,29 @@ async function runTagSuggest() {
         back: back || undefined,
         card_type: values.card_type || 'vocab',
         max_tags: 6,
+        ...(values.card_type === 'vocab' && values.part_of_speech?.trim()
+          ? { part_of_speech: values.part_of_speech.trim() }
+          : {}),
       },
     })
     const ids = data.tags?.map((t) => t._id) ?? []
     const merged = new Set([...selectedTagIds.value, ...ids])
     selectedTagIds.value = [...merged]
-    const created = new Set(tagIdsCreatedByAi.value)
-    for (const t of data.tags || []) {
-      if (t.created) created.add(t._id)
+    const pending = (data.pending_new ?? []).map((p) => p.name?.trim()).filter(Boolean) as string[]
+    const seen = new Set(pendingNewTagNames.value.map((n) => n.toLowerCase()))
+    for (const nm of pending) {
+      const k = nm.toLowerCase()
+      if (!seen.has(k)) {
+        seen.add(k)
+        pendingNewTagNames.value = [...pendingNewTagNames.value, nm]
+      }
     }
-    tagIdsCreatedByAi.value = created
     await loadTags()
-    tagSuggestMessage.value = `Applied ${ids.length} suggestion(s). Edit checkboxes as needed.`
+    const pn = pending.length
+    tagSuggestMessage.value =
+      pn || ids.length
+        ? `Matched ${ids.length} existing tag(s)${pn ? `; ${pn} new when you save` : ''}.`
+        : 'No suggestions.'
   } catch (e: unknown) {
     const fe = e as { data?: { detail?: string } }
     tagSuggestMessage.value =
@@ -680,6 +721,9 @@ function buildCardBody(formValues: Record<string, string | undefined>) {
     card_type: formValues.card_type || 'vocab',
     language: formValues.language || 'en',
     tag_ids: [...selectedTagIds.value],
+    ...(pendingNewTagNames.value.length
+      ? { new_tag_names: [...pendingNewTagNames.value] }
+      : {}),
   }
   const n = formValues.note?.trim()
   const ex = formValues.example?.trim()

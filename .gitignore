@@ -1,5 +1,5 @@
 # Python
-server/.env/
+server/.env
 server/__pycache__/
 *.pyc
 
