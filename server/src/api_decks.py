@@ -115,14 +115,33 @@ def list_decks(page: int = 1, page_size: int = 50, user=Depends(get_current_user
     page = max(1, page)
     page_size = min(max(1, page_size), 100)
     skip = (page - 1) * page_size
-    cursor = (
-        db.decks.find({"owner_id": user["user_id"]})
-        .sort("created_at", -1)
-        .skip(skip)
-        .limit(page_size)
-    )
+    pipeline = [
+        {"$match": {"owner_id": user["user_id"]}},
+        {"$sort": {"created_at": -1}},
+        {"$skip": skip},
+        {"$limit": page_size},
+        {
+            "$lookup": {
+                "from": "flashcards",
+                "let": {"deck_oid": "$_id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$eq": ["$deck_id", {"$toString": "$$deck_oid"}],
+                            },
+                        },
+                    },
+                    {"$group": {"_id": None, "n": {"$sum": 1}}},
+                ],
+                "as": "_card_count_agg",
+            },
+        },
+    ]
     decks = []
-    for d in cursor:
+    for d in db.decks.aggregate(pipeline):
+        agg = d.pop("_card_count_agg", [])
+        d["card_count"] = int(agg[0]["n"]) if agg else 0
         d["_id"] = str(d["_id"])
         decks.append(d)
     return {"decks": decks, "page": page, "page_size": page_size}
@@ -146,6 +165,7 @@ def get_deck(deck_id: str, include_cards: bool = False, page: int = 1, limit: in
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
     deck["_id"] = str(deck["_id"])
+    deck["card_count"] = db.flashcards.count_documents({"deck_id": deck_id})
     if include_cards:
         skip = (page - 1) * limit
         cards = list(db.flashcards.find({"deck_id": deck_id}).skip(skip).limit(limit))
@@ -188,6 +208,10 @@ def create_card(deck_id: str, card: CardCreate, user=Depends(get_current_user)):
     result = db.flashcards.insert_one(doc)
     cid = result.inserted_id
     set_card_tags(db, cid, _merged_tag_ids(tag_ids, new_names))
+    db.decks.update_one(
+        {"_id": ObjectId(deck_id), "owner_id": user["user_id"]},
+        {"$inc": {"card_count": 1}},
+    )
     inserted = db.flashcards.find_one({"_id": cid})
     return {"card": serialize_card(db, inserted)}
 
