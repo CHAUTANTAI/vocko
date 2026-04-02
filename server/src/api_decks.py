@@ -110,6 +110,13 @@ class CardCreate(BaseModel):
     )
 
 
+class CardBatchCreate(BaseModel):
+    cards: list[CardCreate]
+
+
+BATCH_CARDS_MAX = 50
+
+
 @router.get("/decks")
 def list_decks(page: int = 1, page_size: int = 50, user=Depends(get_current_user)):
     page = max(1, page)
@@ -192,6 +199,48 @@ def delete_deck(deck_id: str, user=Depends(get_current_user)):
         db.card_tags.delete_many({"card_id": {"$in": card_ids}})
     db.flashcards.delete_many({"deck_id": deck_id})
     return {"success": True}
+
+
+@router.post("/decks/{deck_id}/cards/batch")
+def create_cards_batch(deck_id: str, body: CardBatchCreate, user=Depends(get_current_user)):
+    if len(body.cards) > BATCH_CARDS_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At most {BATCH_CARDS_MAX} cards per batch",
+        )
+    if len(body.cards) < 1:
+        raise HTTPException(status_code=400, detail="At least one card required")
+    try:
+        did = ObjectId(deck_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    deck = db.decks.find_one({"_id": did, "owner_id": user["user_id"]})
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found or not owned")
+
+    created = 0
+    errors: list[dict] = []
+    for i, card in enumerate(body.cards):
+        try:
+            raw = card.dict()
+            tag_ids = raw.pop("tag_ids", []) or []
+            new_names = raw.pop("new_tag_names", None) or []
+            doc = flashcard_doc_from_payload(raw)
+            doc["deck_id"] = deck_id
+            doc["created_at"] = datetime.datetime.utcnow()
+            result = db.flashcards.insert_one(doc)
+            cid = result.inserted_id
+            set_card_tags(db, cid, _merged_tag_ids(tag_ids, new_names))
+            created += 1
+        except Exception as e:
+            errors.append({"index": i, "detail": str(e)[:500]})
+
+    if created > 0:
+        db.decks.update_one(
+            {"_id": did, "owner_id": user["user_id"]},
+            {"$inc": {"card_count": created}},
+        )
+    return {"created": created, "errors": errors}
 
 
 @router.post("/decks/{deck_id}/cards")

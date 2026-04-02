@@ -9,6 +9,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from .api_auth import router as auth_router
 from .api_decks import router as decks_router
+from .api_import import router as import_router
 from .api_learning import router as learning_router
 from .api_tags import router as tags_router
 from .db import db
@@ -34,6 +35,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(decks_router)
+app.include_router(import_router)
 app.include_router(learning_router)
 app.include_router(tags_router)
 
@@ -51,6 +53,7 @@ def startup_log_openrouter_models():
     hint_env = os.getenv("OPENROUTER_MODEL_HINT", "")
     grade_env = os.getenv("OPENROUTER_MODEL_GRADE", "")
     tag_env = os.getenv("OPENROUTER_MODEL_TAG", "")
+    import_env = os.getenv("OPENROUTER_MODEL_IMPORT", "")
     logger.info(
         "OPENROUTER_MODEL_HINT env raw: %r (empty=%s)",
         hint_env,
@@ -66,12 +69,19 @@ def startup_log_openrouter_models():
         tag_env,
         not tag_env.strip(),
     )
+    logger.info(
+        "OPENROUTER_MODEL_IMPORT env raw: %r (empty=%s) — if empty, uses HINT model",
+        import_env,
+        not import_env.strip(),
+    )
+    from .api_import import _model_import
     from .learning_ai import _model_grade, _model_hint
     from .tag_suggest import _model_tag
 
     logger.info(
-        "OpenRouter resolved: hint=%r grade=%r tag_suggest=%r",
+        "OpenRouter resolved: hint=%r grade=%r tag_suggest=%r import=%r",
         _model_hint(),
         _model_grade(),
         _model_tag(),
+        _model_import(),
     )

@@ -104,9 +104,11 @@ def chat_completion(
     *,
     model: str,
     temperature: float = 0.3,
+    timeout: float | None = None,
 ) -> tuple[str | None, str | None]:
     """
     Returns (content, error). error is None on success.
+    timeout: seconds for this request; None uses default TIMEOUT (25s).
     """
     key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not key:
@@ -128,8 +130,9 @@ def chat_completion(
         "messages": messages,
         "temperature": temperature,
     }
+    eff_timeout = float(timeout) if timeout is not None else TIMEOUT
     try:
-        with httpx.Client(timeout=TIMEOUT) as client:
+        with httpx.Client(timeout=eff_timeout) as client:
             r = client.post(url, json=body, headers=headers)
             if r.status_code >= 400:
                 msg = _openrouter_error_message(r)
