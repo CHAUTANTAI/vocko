@@ -14,6 +14,12 @@ from pydantic import BaseModel, Field
 from .card_helpers import POS_WHITELIST
 from .learning_ai import _parse_json_object
 from .openrouter_client import chat_completion, http_status_for_openrouter_error
+from .toeic_lemma import build_spacy_doc, normalize_vocab_headword
+from .toeic_preprocess import (
+    basic_words_set,
+    preprocess_for_toeic_ai,
+    stopwords_set,
+)
 from .utils import decode_token
 
 logger = logging.getLogger(__name__)
@@ -24,7 +30,9 @@ TOEIC_MAX_TEXT_LEN = 35_000
 TOEIC_CHUNK_SIZE = 2_800
 TOEIC_MAX_TERMS_DEFAULT = 50
 TOEIC_MAX_TERMS_CAP = 100
-TOEIC_PER_CHUNK_CAP = 28
+TOEIC_PER_CHUNK_CAP = 36
+# Max candidate lemmas listed per chunk user message (keeps prompt bounded)
+TOEIC_MAX_CANDIDATES_IN_PROMPT = 1_200
 
 
 def get_current_user(request: Request):
@@ -182,7 +190,7 @@ _TOEIC_SYSTEM = textwrap.dedent(
     For EACH term you MUST output:
     - word: headword or short phrase as in the text
     - part_of_speech: one of noun, verb, adjective, adverb, preposition, conjunction, pronoun, determiner, interjection, phrasal_verb, collocation, other
-    - meaning_vi: concise Vietnamese gloss for the sense in THIS passage
+    - meaning_vi: concise Vietnamese gloss ONLY (must be Vietnamese, not English definitions)
     - cefr: exactly one of A1, A2, B1, B2, C1, C2 (your best estimate for the lemma/phrase in general English)
     - difficulty_score: integer 1–10 for TOEIC difficulty in context (1=trivial, 4–5=B1 routine, 6–7=B2, 8–9=C1/part-7 hard, 10=C2 or rare). For 750+ lists, most picks should be 6–10; avoid flooding with 1–4.
     - note_en: optional short English hint (register, collocation, or trap)
@@ -209,15 +217,37 @@ def import_toeic_vocabulary(body: ToeicVocabRequest, user=Depends(get_current_us
             status_code=413,
             detail=f"Text exceeds maximum length ({TOEIC_MAX_TEXT_LEN} characters)",
         )
-    chunks = _chunk_text(text)
+
+    cleaned, candidates, pre_stats = preprocess_for_toeic_ai(text)
+    if not (cleaned or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Text is empty after removing TOEIC placeholders and noise",
+        )
+
+    chunks = _chunk_text(cleaned)
     if not chunks:
         raise HTTPException(status_code=400, detail="Text is empty")
+
+    spacy_doc = build_spacy_doc(cleaned)
+
+    stop_w = stopwords_set()
+    basic_w = basic_words_set()
+    banned_single = stop_w | basic_w
+    cand_lines = candidates[:TOEIC_MAX_CANDIDATES_IN_PROMPT]
+    candidates_block = "\n".join(cand_lines) if cand_lines else "(empty — rely on passage only; long words may have been filtered.)"
+    if pre_stats.get("candidates_is_empty"):
+        warnings_pre = [
+            "Preprocess: all tokens matched stopword/basic lists; model sees cleaned passage only.",
+        ]
+    else:
+        warnings_pre = []
 
     max_terms = min(body.max_terms, TOEIC_MAX_TERMS_CAP)
     model = _model_import()
     timeout = _import_timeout()
     merged: dict[str, dict[str, Any]] = {}
-    warnings: list[str] = []
+    warnings: list[str] = list(warnings_pre)
 
     for ci, chunk in enumerate(chunks):
         cap = min(TOEIC_PER_CHUNK_CAP, max_terms + 5)
@@ -225,7 +255,13 @@ def import_toeic_vocabulary(body: ToeicVocabRequest, user=Depends(get_current_us
             f"""
             MAX_TERMS_IN_CHUNK={cap}
 
-            Excerpt (chunk {ci + 1} of {len(chunks)}):
+            Unique candidate lemmas from this passage (stopwords removed; basic words still filtered from single-token outputs after extraction).
+            Prefer multi-word phrases and collocations that actually appear in the excerpt below; you may output terms not listed if they are important in the passage.
+            ---
+            {candidates_block}
+            ---
+
+            Cleaned passage excerpt (chunk {ci + 1} of {len(chunks)}):
             ---
             {chunk}
             ---
@@ -270,7 +306,13 @@ def import_toeic_vocabulary(body: ToeicVocabRequest, user=Depends(get_current_us
                 warnings.append(f"Chunk {ci + 1}: skipped {w!r} without meaning_vi.")
                 continue
             word = w.strip()[:500]
+            word = normalize_vocab_headword(word, spacy_doc)
+            word = word[:500]
             meaning_vi = mv.strip()[:2000]
+            w_one = word.strip()
+            if " " not in w_one and w_one.lower() in banned_single:
+                warnings.append(f"Chunk {ci + 1}: dropped very common single-word token {w!r}.")
+                continue
             pos, wpos = _normalize_pos(item.get("part_of_speech"))
             if wpos:
                 warnings.append(wpos)
@@ -313,4 +355,17 @@ def import_toeic_vocabulary(body: ToeicVocabRequest, user=Depends(get_current_us
     if not items and not warnings:
         warnings.append("No terms extracted. Try different text or a smaller excerpt.")
 
-    return {"terms": items, "warnings": warnings, "chunks_processed": len(chunks)}
+    return {
+        "terms": items,
+        "warnings": warnings,
+        "chunks_processed": len(chunks),
+        "preprocess": {
+            "cleaned_length": len(cleaned),
+            "raw_token_count": pre_stats.get("raw_token_count"),
+            "unique_after_dedupe": pre_stats.get("unique_after_dedupe"),
+            "after_stopwords": pre_stats.get("after_stopwords"),
+            "candidates_after_basic": pre_stats.get("candidates_after_basic"),
+            "candidates_in_prompt_cap": TOEIC_MAX_CANDIDATES_IN_PROMPT,
+            "headword_lemma": bool(spacy_doc is not None),
+        },
+    }

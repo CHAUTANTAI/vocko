@@ -1,0 +1,2 @@
+# Extra surface forms to keep as-is (no goals→goal style lemma). One word per line, lowercase.
+# Example: earnings
