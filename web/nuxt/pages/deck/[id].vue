@@ -343,6 +343,12 @@
             <span v-if="card.card_type" class="mr-2 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] uppercase text-slate-400">{{
               card.card_type
             }}</span>
+            <span
+              v-if="card.card_type === 'vocab' && card.part_of_speech"
+              class="mr-1.5 text-xs font-medium text-slate-500"
+            >
+              {{ partOfSpeechDisplayLabel(card.part_of_speech) }}
+            </span>
             <span class="font-medium text-slate-100">{{ card.front?.content ?? '—' }}</span>
             <span class="mx-2 text-slate-600">→</span>
             <span class="text-slate-400">{{ card.back?.content ?? '—' }}</span>
@@ -437,6 +443,11 @@ const deckStats = ref<DeckStats | null>(null)
 const weakTags = ref<WeakTagRow[]>([])
 
 const partOfSpeechOptions = PART_OF_SPEECH_OPTIONS
+
+function partOfSpeechDisplayLabel(value: string | undefined) {
+  if (!value) return ''
+  return PART_OF_SPEECH_OPTIONS.find((o) => o.value === value)?.label ?? value
+}
 
 const cardSchema = toTypedSchema(
   yup.object({

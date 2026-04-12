@@ -54,12 +54,17 @@ class ExplainRequest(BaseModel):
 def _question_payload(card: dict, card_id: str, mode: str) -> dict:
     stored = card.get("hint")
     has_stored = bool(stored and str(stored).strip())
-    return {
+    out = {
         "card_id": card_id,
         "front": card["front"],
         "question_type": mode,
         "has_stored_hint": has_stored,
+        "card_type": card.get("card_type") or "vocab",
     }
+    pos = (card.get("part_of_speech") or "").strip()
+    if pos:
+        out["part_of_speech"] = pos
+    return out
 
 @router.post("/learning/sessions")
 def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
@@ -297,6 +302,12 @@ def submit_answer(session_id: str, req: AnswerRequest, user=Depends(get_current_
     if typo_h and match_type_canonical == "typo":
         out["typo_highlight"] = typo_h
     out["card_back"] = card.get("back") or {}
+    fn = (card.get("note") or "").strip()
+    if fn:
+        out["flashcard_note"] = fn
+    fe = (card.get("example") or "").strip()
+    if fe:
+        out["flashcard_example"] = fe
     return out
 
 @router.post("/learning/sessions/{session_id}/finish")

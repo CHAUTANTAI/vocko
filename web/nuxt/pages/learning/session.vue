@@ -162,6 +162,12 @@
                       <p class="text-xs uppercase tracking-wide text-slate-500">Prompt</p>
                       <p class="mt-3 text-xl font-medium text-white">{{ questionFront }}</p>
                       <p
+                        v-if="question?.card_type === 'vocab' && question.part_of_speech"
+                        class="mt-2 text-sm font-medium text-slate-500"
+                      >
+                        {{ partOfSpeechDisplayLabel(question.part_of_speech) }}
+                      </p>
+                      <p
                         v-if="canFlipCard"
                         class="mt-4 text-xs text-slate-500"
                       >
@@ -174,6 +180,14 @@
                       <p class="text-xs uppercase tracking-wide text-emerald-500/80">Answer</p>
                       <p class="mt-3 text-xl font-medium text-emerald-50">
                         {{ revealedBack?.content ?? '—' }}
+                      </p>
+                      <p v-if="revealedNote" class="mt-4 text-left text-sm leading-relaxed text-slate-400">
+                        <span class="text-xs font-medium uppercase tracking-wide text-slate-500">Note</span>
+                        <span class="mt-1 block whitespace-pre-wrap">{{ revealedNote }}</span>
+                      </p>
+                      <p v-if="revealedExample" class="mt-3 text-left text-sm leading-relaxed text-slate-400">
+                        <span class="text-xs font-medium uppercase tracking-wide text-slate-500">Example</span>
+                        <span class="mt-1 block whitespace-pre-wrap">{{ revealedExample }}</span>
                       </p>
                       <p
                         v-if="canFlipCard"
@@ -213,25 +227,6 @@
               :disabled="inputLocked"
               @keyup.enter="onEnterAnswer"
             />
-            <div v-if="gradedRoundActive && submittedDisplay" class="max-w-md text-sm text-slate-400">
-              <span class="text-slate-500">Your answer: </span>
-              <span class="font-mono text-slate-200">
-                <template v-if="answerDisplayPieces">
-                  <template v-for="(p, idx) in answerDisplayPieces" :key="idx">
-                    <span
-                      v-if="p.gap"
-                      class="inline-block min-w-[0.35rem] border-b-2 border-amber-400 text-amber-400/90"
-                      title="Missing character"
-                      >&#8203;</span
-                    >
-                    <span v-else-if="p.ch !== undefined">{{ p.ch }}</span>
-                  </template>
-                </template>
-                <template v-else>
-                  <span v-for="(ch, i) in submittedDisplay" :key="i" :class="charHighlightClass(i)">{{ ch }}</span>
-                </template>
-              </span>
-            </div>
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="flex flex-wrap items-center gap-2">
                 <button
@@ -301,12 +296,22 @@
         </div>
 
         <div v-else class="rounded-xl border border-slate-800 bg-slate-900/50 p-8">
-          <p class="text-center text-lg text-slate-200">Queue finished</p>
-          <p v-if="summary" class="mt-2 text-center text-sm text-slate-400">
-            {{ summary.correct }} / {{ summary.questions }} correct ({{
-              Math.round((summary.accuracy || 0) * 100)
-            }}%)
-          </p>
+          <template v-if="finishPending">
+            <p class="text-center text-lg text-slate-200">Queue finished</p>
+            <p class="mt-2 text-center text-sm text-slate-500">Loading summary…</p>
+            <div
+              class="mx-auto mt-6 h-9 w-9 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"
+              aria-hidden="true"
+            />
+          </template>
+          <template v-else>
+            <p class="text-center text-lg text-slate-200">Queue finished</p>
+            <p v-if="finishError" class="mt-2 text-center text-sm text-red-400">{{ finishError }}</p>
+            <p v-else-if="summary" class="mt-2 text-center text-sm text-slate-400">
+              {{ summary.correct }} / {{ summary.questions }} correct ({{
+                Math.round((summary.accuracy || 0) * 100)
+              }}%)
+            </p>
           <ul v-if="reviewItems.length" class="mt-6 max-h-80 space-y-2 overflow-y-auto text-left text-sm">
             <li
               v-for="row in reviewItems"
@@ -345,6 +350,7 @@
               New session
             </button>
           </div>
+          </template>
         </div>
       </div>
     </div>
@@ -353,6 +359,7 @@
 
 <script setup lang="ts">
 import { ChevronRight, Lightbulb } from 'lucide-vue-next'
+import { PART_OF_SPEECH_OPTIONS } from '~/constants/partOfSpeech'
 
 definePageMeta({
   layout: 'default',
@@ -375,6 +382,8 @@ type Q = {
   front?: { content?: string }
   question_type?: string
   has_stored_hint?: boolean
+  card_type?: string
+  part_of_speech?: string
 }
 
 type ReviewItem = {
@@ -396,6 +405,8 @@ type AnswerApi = {
   session_answered?: number
   session_correct?: number
   card_back?: { content?: string }
+  flashcard_note?: string
+  flashcard_example?: string
 }
 
 type QueueMeta = {
@@ -419,6 +430,8 @@ const resultOk = ref(false)
 const sessionError = ref('')
 const summary = ref<{ questions: number; correct: number; accuracy: number } | null>(null)
 const reviewItems = ref<ReviewItem[]>([])
+const finishPending = ref(false)
+const finishError = ref('')
 
 const hintText = ref('')
 const hintError = ref('')
@@ -429,13 +442,13 @@ const resultNote = ref('')
 const autoAdvance = ref(true)
 const submitLoading = ref(false)
 const gradedRoundActive = ref(false)
-const submittedDisplay = ref('')
-const typoHighlight = ref<TypoHighlight | null>(null)
 const canClickNext = ref(false)
 const progressVisible = ref(false)
 const progressBarKey = ref(0)
 const cardFlipped = ref(false)
 const revealedBack = ref<{ content?: string } | null>(null)
+const revealedNote = ref('')
+const revealedExample = ref('')
 const sessionAnswered = ref(0)
 const sessionCorrect = ref(0)
 
@@ -479,33 +492,16 @@ const queueMetaLine = computed(() => {
 
 const questionFront = computed(() => question.value?.front?.content ?? '—')
 
+function partOfSpeechDisplayLabel(value: string | undefined) {
+  if (!value) return ''
+  return PART_OF_SPEECH_OPTIONS.find((o) => o.value === value)?.label ?? value
+}
+
 const canFlipCard = computed(
   () => gradedRoundActive.value && revealedBack.value != null,
 )
 
 const inputLocked = computed(() => submitLoading.value || gradedRoundActive.value)
-
-const answerDisplayPieces = computed(() => {
-  const text = submittedDisplay.value
-  const hl = typoHighlight.value
-  if (!hl || !text || hl.kind !== 'delete' || hl.start !== hl.end) return null
-  const pieces: Array<{ ch?: string; gap?: boolean }> = []
-  const n = text.length
-  const j = hl.start
-  for (let i = 0; i < n; i++) {
-    if (i === j) pieces.push({ gap: true })
-    pieces.push({ ch: text[i]! })
-  }
-  if (j === n) pieces.push({ gap: true })
-  return pieces
-})
-
-function charHighlightClass(index: number) {
-  const hl = typoHighlight.value
-  if (!hl || hl.kind === 'delete') return ''
-  if (index >= hl.start && index < hl.end) return 'rounded bg-amber-500/35 text-amber-100'
-  return ''
-}
 
 function cancelAdvanceTimer() {
   if (advanceTimerId !== null) {
@@ -516,8 +512,6 @@ function cancelAdvanceTimer() {
 
 function clearGradeUi() {
   gradedRoundActive.value = false
-  submittedDisplay.value = ''
-  typoHighlight.value = null
   resultLabel.value = ''
   resultNote.value = ''
   resultOk.value = false
@@ -525,6 +519,8 @@ function clearGradeUi() {
   progressVisible.value = false
   cardFlipped.value = false
   revealedBack.value = null
+  revealedNote.value = ''
+  revealedExample.value = ''
   explainText.value = ''
   explainError.value = ''
 }
@@ -589,6 +585,8 @@ async function startSession() {
   sessionError.value = ''
   summary.value = null
   reviewItems.value = []
+  finishPending.value = false
+  finishError.value = ''
   answer.value = ''
   queueMeta.value = null
   clearGradeUi()
@@ -631,7 +629,13 @@ async function getNext() {
   answer.value = ''
   clearHintForCard()
   if (!data.question) {
-    await finish()
+    finishPending.value = true
+    finishError.value = ''
+    try {
+      await finish()
+    } finally {
+      finishPending.value = false
+    }
   }
 }
 
@@ -697,13 +701,17 @@ function scheduleAdvanceAfterGrade() {
   gradedRoundActive.value = true
   canClickNext.value = false
   cardFlipped.value = false
-  progressVisible.value = true
-  progressBarKey.value += 1
-  advanceTimerId = setTimeout(() => {
-    advanceTimerId = null
-    if (autoAdvance.value) void doAdvance()
-    else canClickNext.value = true
-  }, 2000)
+  if (autoAdvance.value) {
+    progressVisible.value = true
+    progressBarKey.value += 1
+    advanceTimerId = setTimeout(() => {
+      advanceTimerId = null
+      void doAdvance()
+    }, 2000)
+  } else {
+    progressVisible.value = false
+    canClickNext.value = true
+  }
 }
 
 async function doAdvance() {
@@ -742,12 +750,9 @@ async function submit() {
     if (typeof data.session_answered === 'number') sessionAnswered.value = data.session_answered
     if (typeof data.session_correct === 'number') sessionCorrect.value = data.session_correct
 
-    submittedDisplay.value = answer.value.trim()
-    const mtH = data.match_type
-    typoHighlight.value =
-      (mtH === 'typo' || mtH === 'typo_one') && data.typo_highlight ? data.typo_highlight : null
-
     revealedBack.value = data.card_back ?? { content: undefined }
+    revealedNote.value = data.flashcard_note ?? ''
+    revealedExample.value = data.flashcard_example ?? ''
 
     scheduleAdvanceAfterGrade()
   } catch {
@@ -768,9 +773,11 @@ async function finish() {
     }>(`/learning/sessions/${sessionId.value}/finish`, { method: 'POST' })
     summary.value = data.summary
     reviewItems.value = data.items ?? []
+    finishError.value = ''
   } catch {
     summary.value = null
     reviewItems.value = []
+    finishError.value = 'Could not load session summary.'
   }
   question.value = null
 }
@@ -782,6 +789,8 @@ function resetSession() {
   question.value = null
   summary.value = null
   reviewItems.value = []
+  finishPending.value = false
+  finishError.value = ''
   sessionError.value = ''
   clearHintForCard()
   clearGradeUi()
