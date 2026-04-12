@@ -4,6 +4,7 @@
     <p class="mt-1 text-sm text-slate-400">Welcome back to VocKO.</p>
 
     <Form
+      as="form"
       class="mt-8 space-y-4"
       :validation-schema="schema"
       @submit="onSubmit"
@@ -33,6 +34,10 @@
           <p v-if="errors[0]" class="mt-1 text-sm text-red-400">{{ errors[0] }}</p>
         </Field>
       </div>
+      <label class="flex cursor-pointer items-center gap-2 text-sm text-slate-300">
+        <input v-model="remember" type="checkbox" class="rounded border-slate-600 bg-slate-900 text-emerald-600 focus:ring-emerald-500" />
+        Remember me
+      </label>
       <p v-if="formError" class="text-sm text-red-400">{{ formError }}</p>
       <button
         type="submit"
@@ -69,11 +74,12 @@ const schema = toTypedSchema(
 const router = useRouter()
 const { login } = useAuth()
 const formError = ref('')
+const remember = ref(true)
 
 async function onSubmit(values: { email: string; password: string }) {
   formError.value = ''
   try {
-    await login(values.email, values.password)
+    await login(values.email, values.password, remember.value)
     await router.push('/deck')
   } catch {
     formError.value = 'Invalid credentials'

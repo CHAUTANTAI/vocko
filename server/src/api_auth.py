@@ -1,10 +1,19 @@
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from bson import ObjectId
 from bson.errors import InvalidId
 from .db import db
 from .rate_limit import limiter
-from .utils import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from .utils import (
+    REFRESH_TOKEN_EXPIRE_DAYS,
+    REFRESH_TOKEN_EXPIRE_DAYS_SHORT,
+    hash_password,
+    verify_password,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    refresh_token_ttl_days_from_payload,
+)
 import datetime
 
 router = APIRouter()
@@ -13,10 +22,12 @@ class SignupRequest(BaseModel):
     email: str
     password: str
     display_name: str
+    remember: bool = True
 
 class SigninRequest(BaseModel):
     email: str
     password: str
+    remember: bool = True
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -36,7 +47,8 @@ def signup(request: Request, req: SignupRequest):
     result = db.users.insert_one(user)
     user["_id"] = str(result.inserted_id)
     access_token = create_access_token({"user_id": user["_id"], "email": user["email"]})
-    refresh_token = create_refresh_token({"user_id": user["_id"]})
+    rt_days = REFRESH_TOKEN_EXPIRE_DAYS if req.remember else REFRESH_TOKEN_EXPIRE_DAYS_SHORT
+    refresh_token = create_refresh_token({"user_id": user["_id"]}, refresh_days=rt_days)
     return {"user": {"id": user["_id"], "display_name": user["display_name"], "email": user["email"]}, "access_token": access_token, "refresh_token": refresh_token}
 
 @router.post("/auth/signin")
@@ -47,7 +59,8 @@ def signin(request: Request, req: SigninRequest):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     user_id = str(user["_id"])
     access_token = create_access_token({"user_id": user_id, "email": user["email"]})
-    refresh_token = create_refresh_token({"user_id": user_id})
+    rt_days = REFRESH_TOKEN_EXPIRE_DAYS if req.remember else REFRESH_TOKEN_EXPIRE_DAYS_SHORT
+    refresh_token = create_refresh_token({"user_id": user_id}, refresh_days=rt_days)
     return {"user": {"id": user_id, "display_name": user["display_name"], "email": user["email"]}, "access_token": access_token, "refresh_token": refresh_token}
 
 @router.post("/auth/refresh")
@@ -64,6 +77,7 @@ def refresh(request: Request, req: RefreshRequest):
     user = db.users.find_one({"_id": oid})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    rt_days = refresh_token_ttl_days_from_payload(payload)
     access_token = create_access_token({"user_id": user_id, "email": user["email"]})
-    refresh_token = create_refresh_token({"user_id": user_id})
+    refresh_token = create_refresh_token({"user_id": user_id}, refresh_days=rt_days)
     return {"access_token": access_token, "refresh_token": refresh_token}

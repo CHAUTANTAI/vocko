@@ -1,30 +1,29 @@
 import { defineStore } from 'pinia'
+import { clearAuthCookies, readRememberFlag, writeAuthCookies } from '~/utils/authCookies'
 
 export type AuthUser = { id: string; email: string; display_name: string }
 
 const cookieBase = {
   sameSite: 'lax' as const,
   path: '/',
+  watch: false as const,
 }
 
 export const useAuthStore = defineStore('auth', () => {
   const token = useCookie<string | null>('vocko_at', {
     default: () => null,
-    maxAge: 60 * 60 * 12,
     ...cookieBase,
   })
   const refreshToken = useCookie<string | null>('vocko_rt', {
     default: () => null,
-    maxAge: 60 * 60 * 24 * 14,
     ...cookieBase,
   })
   const user = useCookie<AuthUser | null>('vocko_user', {
     default: () => null,
-    maxAge: 60 * 60 * 24 * 14,
     ...cookieBase,
   })
 
-  async function login(email: string, password: string) {
+  async function login(email: string, password: string, remember = true) {
     const config = useRuntimeConfig()
     const data = await $fetch<{
       access_token: string
@@ -32,14 +31,15 @@ export const useAuthStore = defineStore('auth', () => {
       user: AuthUser
     }>(`${config.public.apiBase}/auth/signin`, {
       method: 'POST',
-      body: { email, password },
+      body: { email, password, remember },
     })
     token.value = data.access_token
     refreshToken.value = data.refresh_token
     user.value = data.user
+    writeAuthCookies(data.access_token, data.refresh_token, data.user, remember)
   }
 
-  async function register(email: string, password: string, display_name: string) {
+  async function register(email: string, password: string, display_name: string, remember = true) {
     const config = useRuntimeConfig()
     const data = await $fetch<{
       access_token: string
@@ -47,17 +47,19 @@ export const useAuthStore = defineStore('auth', () => {
       user: AuthUser
     }>(`${config.public.apiBase}/auth/signup`, {
       method: 'POST',
-      body: { email, password, display_name },
+      body: { email, password, display_name, remember },
     })
     token.value = data.access_token
     refreshToken.value = data.refresh_token
     user.value = data.user
+    writeAuthCookies(data.access_token, data.refresh_token, data.user, remember)
   }
 
   function logout() {
     token.value = null
     refreshToken.value = null
     user.value = null
+    clearAuthCookies()
   }
 
   async function tryRefresh(): Promise<boolean> {
@@ -68,8 +70,12 @@ export const useAuthStore = defineStore('auth', () => {
         `${config.public.apiBase}/auth/refresh`,
         { method: 'POST', body: { refresh_token: refreshToken.value } },
       )
+      const remember = readRememberFlag()
       token.value = data.access_token
       refreshToken.value = data.refresh_token
+      if (user.value) {
+        writeAuthCookies(data.access_token, data.refresh_token, user.value, remember)
+      }
       return true
     } catch {
       logout()

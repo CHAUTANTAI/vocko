@@ -7,6 +7,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "supersecret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 30
+REFRESH_TOKEN_EXPIRE_DAYS_SHORT = 7
 
 
 def hash_password(password: str) -> str:
@@ -27,11 +28,31 @@ def create_access_token(data: dict, expires_delta=None):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def create_refresh_token(data: dict):
-    expire = datetime.datetime.utcnow() + datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+def create_refresh_token(data: dict, refresh_days: int | None = None):
+    days = REFRESH_TOKEN_EXPIRE_DAYS if refresh_days is None else int(refresh_days)
+    if days < REFRESH_TOKEN_EXPIRE_DAYS_SHORT:
+        days = REFRESH_TOKEN_EXPIRE_DAYS_SHORT
+    if days > REFRESH_TOKEN_EXPIRE_DAYS:
+        days = REFRESH_TOKEN_EXPIRE_DAYS
+    expire = datetime.datetime.utcnow() + datetime.timedelta(days=days)
     to_encode = data.copy()
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({"exp": expire, "type": "refresh", "rt_days": days})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def refresh_token_ttl_days_from_payload(payload: dict) -> int:
+    raw = payload.get("rt_days")
+    if raw is None:
+        return REFRESH_TOKEN_EXPIRE_DAYS
+    try:
+        d = int(raw)
+    except (TypeError, ValueError):
+        return REFRESH_TOKEN_EXPIRE_DAYS
+    if d == REFRESH_TOKEN_EXPIRE_DAYS_SHORT:
+        return REFRESH_TOKEN_EXPIRE_DAYS_SHORT
+    if d == REFRESH_TOKEN_EXPIRE_DAYS:
+        return REFRESH_TOKEN_EXPIRE_DAYS
+    return REFRESH_TOKEN_EXPIRE_DAYS
 
 
 def decode_token(token: str):
