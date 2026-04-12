@@ -207,17 +207,34 @@
                       class="absolute inset-0 flex flex-col justify-center rounded-xl border border-emerald-900/40 bg-gradient-to-br from-slate-900 to-emerald-950/30 p-8 pt-12 text-center shadow-inner [backface-visibility:hidden] [transform:rotateY(180deg)]"
                     >
                       <p class="text-xs uppercase tracking-wide text-emerald-500/80">Answer</p>
-                      <p class="mt-3 text-xl font-medium text-emerald-50">
-                        {{ revealedBack?.content ?? '—' }}
-                      </p>
-                      <p v-if="revealedNote" class="mt-4 text-left text-sm leading-relaxed text-slate-400">
+                      <div class="mt-3 w-full">
+                        <div
+                          v-if="revealedBackDisplay"
+                          class="inline-block max-w-full text-left text-xl font-medium text-emerald-50 prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5"
+                          v-html="revealedBackDisplay"
+                        />
+                        <p v-else class="text-xl font-medium text-emerald-50">—</p>
+                      </div>
+                      <div
+                        v-if="revealedNoteDisplay"
+                        class="mt-4 text-left text-sm leading-relaxed text-slate-400"
+                      >
                         <span class="text-xs font-medium uppercase tracking-wide text-slate-500">Note</span>
-                        <span class="mt-1 block whitespace-pre-wrap">{{ revealedNote }}</span>
-                      </p>
-                      <p v-if="revealedExample" class="mt-3 text-left text-sm leading-relaxed text-slate-400">
+                        <div
+                          class="mt-1 block max-w-full prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
+                          v-html="revealedNoteDisplay"
+                        />
+                      </div>
+                      <div
+                        v-if="revealedExampleDisplay"
+                        class="mt-3 text-left text-sm leading-relaxed text-slate-400"
+                      >
                         <span class="text-xs font-medium uppercase tracking-wide text-slate-500">Example</span>
-                        <span class="mt-1 block whitespace-pre-wrap">{{ revealedExample }}</span>
-                      </p>
+                        <div
+                          class="mt-1 block max-w-full prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
+                          v-html="revealedExampleDisplay"
+                        />
+                      </div>
                       <p
                         v-if="canFlipCard"
                         class="mt-4 text-xs text-slate-500"
@@ -351,7 +368,7 @@
                 <div class="min-w-0 flex-1 text-slate-200">
                   <span class="font-medium text-slate-100">{{ row.front?.content ?? '—' }}</span>
                   <span class="mx-1 text-slate-600">→</span>
-                  <span class="text-slate-400">{{ row.back?.content ?? '—' }}</span>
+                  <span class="text-slate-400">{{ backSummaryPreview(row.back?.content) }}</span>
                 </div>
                 <span
                   class="shrink-0 rounded px-2 py-0.5 text-xs font-medium"
@@ -389,6 +406,8 @@
 <script setup lang="ts">
 import { ChevronRight, Lightbulb, Volume2 } from 'lucide-vue-next'
 import { PART_OF_SPEECH_OPTIONS } from '~/constants/partOfSpeech'
+import { htmlToPlainText, isEmptyRichText } from '~/utils/richText'
+import { sanitizeRichHtml } from '~/utils/sanitizeRichHtml'
 
 definePageMeta({
   layout: 'default',
@@ -482,6 +501,27 @@ const cardFlipped = ref(false)
 const revealedBack = ref<{ content?: string } | null>(null)
 const revealedNote = ref('')
 const revealedExample = ref('')
+
+const revealedBackDisplay = computed(() => {
+  const raw = revealedBack.value?.content
+  if (isEmptyRichText(raw)) return ''
+  return sanitizeRichHtml(raw)
+})
+
+const revealedNoteDisplay = computed(() => {
+  if (isEmptyRichText(revealedNote.value)) return ''
+  return sanitizeRichHtml(revealedNote.value)
+})
+
+const revealedExampleDisplay = computed(() => {
+  if (isEmptyRichText(revealedExample.value)) return ''
+  return sanitizeRichHtml(revealedExample.value)
+})
+
+function backSummaryPreview(content: string | undefined) {
+  const t = htmlToPlainText(content)
+  return t || '—'
+}
 const sessionAnswered = ref(0)
 const sessionCorrect = ref(0)
 

@@ -164,9 +164,10 @@
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-400">Back</label>
               <Field name="back" v-slot="{ field, errors }">
-                <input
-                  v-bind="field"
-                  class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                <RichTextEditor
+                  :model-value="field.value"
+                  @update:model-value="field.onChange"
+                  @blur="field.onBlur"
                 />
                 <p v-if="errors[0]" class="mt-1 text-xs text-red-400">{{ errors[0] }}</p>
               </Field>
@@ -224,18 +225,20 @@
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-400">Note</label>
               <Field name="note" v-slot="{ field }">
-                <input
-                  v-bind="field"
-                  class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                <RichTextEditor
+                  :model-value="field.value"
+                  @update:model-value="field.onChange"
+                  @blur="field.onBlur"
                 />
               </Field>
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-slate-400">Example</label>
               <Field name="example" v-slot="{ field }">
-                <input
-                  v-bind="field"
-                  class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                <RichTextEditor
+                  :model-value="field.value"
+                  @update:model-value="field.onChange"
+                  @blur="field.onBlur"
                 />
               </Field>
             </div>
@@ -351,7 +354,7 @@
             </span>
             <span class="font-medium text-slate-100">{{ card.front?.content ?? '—' }}</span>
             <span class="mx-2 text-slate-600">→</span>
-            <span class="text-slate-400">{{ card.back?.content ?? '—' }}</span>
+            <span class="text-slate-400">{{ backPreview(card.back?.content) }}</span>
             <span v-if="card.hint" class="ml-2 text-xs text-amber-500/90">· hint</span>
           </span>
           <button
@@ -389,6 +392,7 @@ import { toTypedSchema } from '@vee-validate/yup'
 import * as yup from 'yup'
 import { Play, Search, Trash2 } from 'lucide-vue-next'
 import { PART_OF_SPEECH_OPTIONS } from '~/constants/partOfSpeech'
+import { htmlToPlainText, isEmptyRichText } from '~/utils/richText'
 
 definePageMeta({
   layout: 'default',
@@ -449,10 +453,18 @@ function partOfSpeechDisplayLabel(value: string | undefined) {
   return PART_OF_SPEECH_OPTIONS.find((o) => o.value === value)?.label ?? value
 }
 
+function backPreview(html: string | undefined) {
+  const t = htmlToPlainText(html)
+  return t || '—'
+}
+
 const cardSchema = toTypedSchema(
   yup.object({
     front: yup.string().min(1, 'Front is required').required(),
-    back: yup.string().min(1, 'Back is required').required(),
+    back: yup
+      .string()
+      .required()
+      .test('back-non-empty', 'Back is required', (v) => !isEmptyRichText(v)),
     hint: yup.string().optional(),
     note: yup.string().optional(),
     example: yup.string().optional(),
@@ -481,16 +493,24 @@ const { handleSubmit, resetForm, values, setFieldValue } = useForm({
   initialValues: { ...cardFormInitial },
 })
 
-const fuse = computed(() =>
-  new Fuse(cards.value, {
-    keys: [
-      { name: 'front.content', weight: 0.5 },
-      { name: 'back.content', weight: 0.5 },
-      'card_type',
-      'note',
-    ],
-    threshold: 0.4,
-  }),
+const fuse = computed(
+  () =>
+    new Fuse(cards.value, {
+      keys: [
+        { name: 'front.content', weight: 0.5 },
+        {
+          name: 'backPlain',
+          weight: 0.5,
+          getFn: (doc: CardRow) => htmlToPlainText(doc.back?.content),
+        },
+        'card_type',
+        {
+          name: 'notePlain',
+          getFn: (doc: CardRow) => htmlToPlainText(doc.note),
+        },
+      ],
+      threshold: 0.4,
+    }),
 )
 
 const displayedCards = computed(() => {
@@ -639,7 +659,7 @@ function onCardTypeChange(field: { value: unknown; onChange: (v: string) => void
 
 async function runTagSuggest() {
   const front = (values.front || '').trim()
-  const back = (values.back || '').trim()
+  const back = htmlToPlainText(values.back || '')
   if (!front) {
     tagSuggestMessage.value = 'Add front (and ideally back) first.'
     return
@@ -736,11 +756,11 @@ function buildCardBody(formValues: Record<string, string | undefined>) {
       ? { new_tag_names: [...pendingNewTagNames.value] }
       : {}),
   }
-  const n = formValues.note?.trim()
-  const ex = formValues.example?.trim()
+  const n = formValues.note
+  const ex = formValues.example
   const h = formValues.hint?.trim()
-  if (n) body.note = n
-  if (ex) body.example = ex
+  if (!isEmptyRichText(n)) body.note = n
+  if (!isEmptyRichText(ex)) body.example = ex
   if (h) body.hint = h
   if (formValues.card_type === 'vocab' && formValues.part_of_speech?.trim()) {
     body.part_of_speech = formValues.part_of_speech.trim()
