@@ -60,6 +60,7 @@ def _question_payload(card: dict, card_id: str, mode: str) -> dict:
         "question_type": mode,
         "has_stored_hint": has_stored,
         "card_type": card.get("card_type") or "vocab",
+        "language": card.get("language") or "en",
     }
     pos = (card.get("part_of_speech") or "").strip()
     if pos:

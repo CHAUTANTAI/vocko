@@ -94,6 +94,24 @@
         </span>
       </label>
 
+      <label
+        v-if="!sessionId"
+        class="mt-3 flex cursor-pointer select-none items-start gap-2 text-sm text-slate-400"
+      >
+        <input
+          v-model="autoAudio"
+          type="checkbox"
+          class="mt-0.5 rounded border-slate-600 bg-slate-900 text-emerald-600 focus:ring-emerald-500/40"
+        />
+        <span>
+          <span class="text-slate-300">Auto audio</span>
+          <span class="mt-1 block text-xs leading-relaxed text-slate-500">
+            When on, each new vocab prompt is spoken automatically (English). You can always tap the speaker
+            on the card to replay.
+          </span>
+        </span>
+      </label>
+
       <div v-if="!sessionId" class="mt-6">
         <button
           type="button"
@@ -115,24 +133,26 @@
       <div v-if="sessionId" class="mt-6">
         <div v-if="question">
           <div class="relative">
-            <label
-              class="absolute right-2 top-2 z-20 flex cursor-pointer select-none items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-900/90 px-2 py-1 text-xs text-slate-300"
+            <div
+              class="absolute right-2 top-2 z-20 flex flex-col gap-2 rounded-lg border border-slate-700/80 bg-slate-900/90 px-2 py-1.5 text-xs text-slate-300"
             >
-              <span>Auto next</span>
-              <button
-                type="button"
-                role="switch"
-                :aria-checked="autoAdvance"
-                class="relative h-5 w-9 rounded-full transition-colors"
-                :class="autoAdvance ? 'bg-emerald-600' : 'bg-slate-600'"
-                @click="autoAdvance = !autoAdvance"
-              >
-                <span
-                  class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
-                  :class="autoAdvance ? 'left-4' : 'left-0.5'"
-                />
-              </button>
-            </label>
+              <div class="flex cursor-pointer select-none items-center gap-2">
+                <span>Auto next</span>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="autoAdvance"
+                  class="relative h-5 w-9 rounded-full transition-colors"
+                  :class="autoAdvance ? 'bg-emerald-600' : 'bg-slate-600'"
+                  @click="autoAdvance = !autoAdvance"
+                >
+                  <span
+                    class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
+                    :class="autoAdvance ? 'left-4' : 'left-0.5'"
+                  />
+                </button>
+              </div>
+            </div>
             <ClientOnly>
               <div
                 v-motion
@@ -159,6 +179,15 @@
                     <div
                       class="absolute inset-0 flex flex-col justify-center rounded-xl border border-slate-700 bg-gradient-to-br from-slate-900 to-slate-950 p-8 pt-12 text-center shadow-inner [backface-visibility:hidden]"
                     >
+                      <button
+                        v-if="frontSpeechAvailable"
+                        type="button"
+                        class="absolute left-3 top-3 z-10 rounded-full border border-slate-600/80 bg-slate-800/90 p-2 text-slate-300 outline-none hover:bg-slate-700/90 hover:text-white focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                        aria-label="Speak prompt"
+                        @click.stop="playFrontSpeech(question)"
+                      >
+                        <Volume2 class="h-5 w-5" />
+                      </button>
                       <p class="text-xs uppercase tracking-wide text-slate-500">Prompt</p>
                       <p class="mt-3 text-xl font-medium text-white">{{ questionFront }}</p>
                       <p
@@ -358,7 +387,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, Lightbulb } from 'lucide-vue-next'
+import { ChevronRight, Lightbulb, Volume2 } from 'lucide-vue-next'
 import { PART_OF_SPEECH_OPTIONS } from '~/constants/partOfSpeech'
 
 definePageMeta({
@@ -367,6 +396,7 @@ definePageMeta({
 })
 
 const AUTO_KEY = 'vocko-learning-auto-advance'
+const AUTO_AUDIO_KEY = 'vocko-learning-auto-audio'
 
 const route = useRoute()
 const { api } = useApi()
@@ -384,6 +414,7 @@ type Q = {
   has_stored_hint?: boolean
   card_type?: string
   part_of_speech?: string
+  language?: string
 }
 
 type ReviewItem = {
@@ -440,6 +471,8 @@ const hintPanelOpen = ref(false)
 const resultNote = ref('')
 
 const autoAdvance = ref(true)
+/** Auto-read front on new question (vocab + English); default off */
+const autoAudio = ref(false)
 const submitLoading = ref(false)
 const gradedRoundActive = ref(false)
 const canClickNext = ref(false)
@@ -497,6 +530,35 @@ function partOfSpeechDisplayLabel(value: string | undefined) {
   return PART_OF_SPEECH_OPTIONS.find((o) => o.value === value)?.label ?? value
 }
 
+function frontSpeechEligible(q: Q | null): q is Q {
+  if (!q) return false
+  if ((q.card_type ?? 'vocab').toLowerCase() !== 'vocab') return false
+  const lang = (q.language ?? 'en').toLowerCase()
+  if (!lang.startsWith('en')) return false
+  return Boolean((q.front?.content ?? '').trim())
+}
+
+const frontSpeechAvailable = computed(
+  () => !!sessionId.value && frontSpeechEligible(question.value),
+)
+
+/**
+ * Speaks prompt front verbatim. Browser SpeechSynthesis has no POS/stress hint API:
+ * for homographs like "address" (noun vs verb stress), the engine picks one reading from
+ * the string alone. True noun/verb disambiguation would need IPA, SSML-capable TTS, etc.
+ */
+function playFrontSpeech(q: Q | null) {
+  if (!import.meta.client) return
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  if (!frontSpeechEligible(q)) return
+  const text = (q.front?.content ?? '').trim()
+  if (!text) return
+  window.speechSynthesis.cancel()
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'en-US'
+  window.speechSynthesis.speak(u)
+}
+
 const canFlipCard = computed(
   () => gradedRoundActive.value && revealedBack.value != null,
 )
@@ -541,6 +603,9 @@ onMounted(() => {
     const v = localStorage.getItem(AUTO_KEY)
     if (v === '0') autoAdvance.value = false
     if (v === '1') autoAdvance.value = true
+    const aa = localStorage.getItem(AUTO_AUDIO_KEY)
+    if (aa === '1') autoAudio.value = true
+    if (aa === '0') autoAudio.value = false
   }
 })
 
@@ -548,8 +613,31 @@ watch(autoAdvance, (on) => {
   if (import.meta.client) localStorage.setItem(AUTO_KEY, on ? '1' : '0')
 })
 
+watch(autoAudio, (on) => {
+  if (import.meta.client) localStorage.setItem(AUTO_AUDIO_KEY, on ? '1' : '0')
+})
+
+watch(
+  question,
+  (q) => {
+    if (!import.meta.client) return
+    if (!q) {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+      return
+    }
+    if (!sessionId.value || !autoAudio.value) return
+    playFrontSpeech(q)
+  },
+  { flush: 'post' },
+)
+
 onUnmounted(() => {
   cancelAdvanceTimer()
+  if (import.meta.client && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+  }
 })
 
 function apiErrorDetail(err: unknown): string | null {
