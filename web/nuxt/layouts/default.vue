@@ -22,6 +22,12 @@
             >
               Import
             </NuxtLink>
+            <NuxtLink
+              to="/learning/history"
+              class="rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-white"
+            >
+              History
+            </NuxtLink>
             <span class="max-w-[10rem] truncate text-slate-500">{{ auth.user?.display_name }}</span>
             <button
               type="button"

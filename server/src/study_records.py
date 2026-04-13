@@ -38,6 +38,8 @@ def insert_study_record(
     match_type_canonical: str,
     time_ms: int,
     is_first_attempt: bool,
+    grading_mode: str = "typed",
+    self_rating: str | None = None,
 ) -> ObjectId:
     doc = {
         "user_id": user_id,
@@ -50,7 +52,10 @@ def insert_study_record(
         "is_first_attempt": is_first_attempt,
         "time_ms": time_ms,
         "created_at": datetime.datetime.utcnow(),
+        "grading_mode": grading_mode,
     }
+    if self_rating is not None:
+        doc["self_rating"] = self_rating
     ins = db.study_records.insert_one(doc)
     return ins.inserted_id
 

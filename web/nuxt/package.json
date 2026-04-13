@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "nuxi prepare",
     "dev": "nuxi dev --host 127.0.0.1 --port 3000",
     "dev:clean": "nuxi cleanup && nuxi dev --host 127.0.0.1 --port 3000",
     "build": "nuxi build",
@@ -20,7 +21,6 @@
     "@vueuse/core": "^12.0.0",
     "@vueuse/motion": "^2.2.6",
     "fuse.js": "^7.0.0",
-    "isomorphic-dompurify": "^2.22.0",
     "lucide-vue-next": "^0.468.0",
     "nuxt": "^3.14.0",
     "pinia": "^2.3.0",

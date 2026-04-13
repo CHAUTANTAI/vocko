@@ -66,6 +66,7 @@ def create_indexes():
     db.user_progress.create_index([("user_id", 1), ("next_due_at", 1)])
     db.user_progress.create_index([("user_id", 1), ("deck_id", 1)])
     db.learning_sessions.create_index([("user_id", 1), ("started_at", -1)])
+    db.learning_sessions.create_index([("user_id", 1), ("deck_id", 1), ("started_at", -1)])
     migrate_flashcard_defaults()
     migrate_unset_flashcard_source_id()
     seed_tags()

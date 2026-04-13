@@ -1,5 +1,6 @@
 import datetime
 import os
+import random
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -19,6 +20,18 @@ from .study_records import (
 from .utils import decode_token
 
 router = APIRouter()
+
+SELF_RATINGS = frozenset({"known", "unsure", "forgot"})
+
+
+def _self_rating_to_progress(rating: str) -> tuple[bool, int, str]:
+    """Returns (correct, grade, match_type_canonical) for SRS + study_records."""
+    if rating == "known":
+        return True, 5, "self_known"
+    if rating == "unsure":
+        return True, 3, "self_unsure"
+    return False, 0, "self_forgot"
+
 
 def get_current_user(request: Request):
     auth = request.headers.get("authorization")
@@ -51,7 +64,17 @@ class ExplainRequest(BaseModel):
     deck_id: str | None = None
 
 
-def _question_payload(card: dict, card_id: str, mode: str) -> dict:
+class SelfGradeRequest(BaseModel):
+    card_id: str
+    rating: str
+    time_ms: int = 0
+
+
+class ContinueRoundRequest(BaseModel):
+    scope: str
+
+
+def _question_payload(card: dict, card_id: str, mode: str, *, include_back: bool = False) -> dict:
     stored = card.get("hint")
     has_stored = bool(stored and str(stored).strip())
     out = {
@@ -65,6 +88,8 @@ def _question_payload(card: dict, card_id: str, mode: str) -> dict:
     pos = (card.get("part_of_speech") or "").strip()
     if pos:
         out["part_of_speech"] = pos
+    if include_back:
+        out["back"] = card.get("back") or {}
     return out
 
 @router.post("/learning/sessions")
@@ -72,34 +97,41 @@ def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
     deck = db.decks.find_one({"_id": ObjectId(req.deck_id), "owner_id": user["user_id"]})
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
-    queue_size = int(req.options.get("queue_size", 30))
-    use_smart = bool(req.options.get("smart_queue", False))
-    weights = None
-    w = req.options.get("smart_queue_weights")
-    if isinstance(w, (list, tuple)) and len(w) == 3:
-        try:
-            weights = (float(w[0]), float(w[1]), float(w[2]))
-        except (TypeError, ValueError):
-            weights = None
-    if use_smart:
-        cards, queue_meta = services.build_learning_queue_smart(
-            db,
-            req.deck_id,
-            user["user_id"],
-            req.mode,
-            queue_size,
-            weights=weights,
-        )
+    interaction_mode = str(req.options.get("interaction_mode") or "typed")
+    if interaction_mode not in ("typed", "self_grade"):
+        interaction_mode = "typed"
+
+    if interaction_mode == "self_grade":
+        cards, queue_meta = services.build_self_grade_initial_queue(db, req.deck_id)
     else:
-        cards, queue_meta = services.build_learning_queue_meta(
-            db, req.deck_id, user["user_id"], req.mode, queue_size
-        )
+        queue_size = int(req.options.get("queue_size", 30))
+        use_smart = bool(req.options.get("smart_queue", False))
+        weights = None
+        w = req.options.get("smart_queue_weights")
+        if isinstance(w, (list, tuple)) and len(w) == 3:
+            try:
+                weights = (float(w[0]), float(w[1]), float(w[2]))
+            except (TypeError, ValueError):
+                weights = None
+        if use_smart:
+            cards, queue_meta = services.build_learning_queue_smart(
+                db,
+                req.deck_id,
+                user["user_id"],
+                req.mode,
+                queue_size,
+                weights=weights,
+            )
+        else:
+            cards, queue_meta = services.build_learning_queue_meta(
+                db, req.deck_id, user["user_id"], req.mode, queue_size
+            )
     if not cards:
         raise HTTPException(
             status_code=400,
             detail="No cards in queue for this deck/mode",
         )
-    session = {
+    session: dict = {
         "user_id": user["user_id"],
         "deck_id": req.deck_id,
         "mode": req.mode,
@@ -107,30 +139,62 @@ def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
         "queue": [str(c["_id"]) for c in cards],
         "answers": [],
         "study_record_ids": [],
+        "interaction_mode": interaction_mode,
     }
+    if interaction_mode == "self_grade":
+        session["ratings"] = {}
+        session["last_round_ratings"] = {}
+        session["round_index"] = 0
+        session["initial_card_ids"] = [str(c["_id"]) for c in cards]
+        session["pending_round_choice"] = False
     result = db.learning_sessions.insert_one(session)
     session_id = str(result.inserted_id)
+    inc_back = interaction_mode == "self_grade"
     preloaded = [
-        _question_payload(c, str(c["_id"]), req.mode) for c in cards[:5]
+        _question_payload(c, str(c["_id"]), req.mode, include_back=inc_back) for c in cards[:5]
     ]
     return {
         "session_id": session_id,
         "preloaded_questions": preloaded,
         "queue_meta": queue_meta,
+        "interaction_mode": interaction_mode,
     }
 
 @router.get("/learning/sessions/{session_id}/next")
 def get_next_question(session_id: str, user=Depends(get_current_user)):
-    session = db.learning_sessions.find_one({"_id": ObjectId(session_id), "user_id": user["user_id"]})
+    try:
+        sid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = db.learning_sessions.find_one({"_id": sid, "user_id": user["user_id"]})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    if session.get("interaction_mode") == "self_grade" and session.get("pending_round_choice"):
+        lrr = session.get("last_round_ratings") or {}
+        bd = {"known": 0, "unsure": 0, "forgot": 0}
+        for r in lrr.values():
+            if r in bd:
+                bd[r] += 1
+        return {
+            "question": None,
+            "interaction_mode": "self_grade",
+            "pending_round_choice": True,
+            "breakdown": bd,
+            "round_index": int(session.get("round_index") or 0),
+        }
     if not session["queue"]:
-        return {"question": None}
+        return {"question": None, "interaction_mode": session.get("interaction_mode", "typed")}
     card_id = session["queue"][0]
     card = db.flashcards.find_one({"_id": ObjectId(card_id)})
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
-    return {"question": _question_payload(card, card_id, session["mode"])}
+    inc_back = session.get("interaction_mode") == "self_grade"
+    out = {
+        "question": _question_payload(card, card_id, session["mode"], include_back=inc_back),
+    }
+    if session.get("interaction_mode") == "self_grade":
+        out["interaction_mode"] = "self_grade"
+    return out
 
 
 @router.post("/learning/sessions/{session_id}/hint")
@@ -186,6 +250,11 @@ def submit_answer(session_id: str, req: AnswerRequest, user=Depends(get_current_
     session = db.learning_sessions.find_one({"_id": ObjectId(session_id), "user_id": user["user_id"]})
     if not session or not session["queue"]:
         raise HTTPException(status_code=404, detail="Session not found or finished")
+    if session.get("interaction_mode") == "self_grade":
+        raise HTTPException(
+            status_code=400,
+            detail="This session uses self-grade; call POST /learning/sessions/{id}/self-grade instead.",
+        )
     # Lấy card đầu tiên trong queue
     card_id = session["queue"][0]
     if card_id != req.card_id:
@@ -311,45 +380,335 @@ def submit_answer(session_id: str, req: AnswerRequest, user=Depends(get_current_
         out["flashcard_example"] = fe
     return out
 
+
+@router.post("/learning/sessions/{session_id}/self-grade")
+def submit_self_grade(session_id: str, req: SelfGradeRequest, user=Depends(get_current_user)):
+    try:
+        sid_oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = db.learning_sessions.find_one({"_id": sid_oid, "user_id": user["user_id"]})
+    if not session or not session.get("queue"):
+        raise HTTPException(status_code=404, detail="Session not found or finished")
+    if session.get("interaction_mode") != "self_grade":
+        raise HTTPException(status_code=400, detail="Not a self-grade session")
+    if session.get("pending_round_choice"):
+        raise HTTPException(status_code=400, detail="Choose how to continue the round first")
+    rating = (req.rating or "").strip().lower()
+    if rating not in SELF_RATINGS:
+        raise HTTPException(status_code=400, detail="rating must be one of: known, unsure, forgot")
+
+    card_id = session["queue"][0]
+    if card_id != req.card_id:
+        raise HTTPException(status_code=400, detail="Card mismatch")
+    card = db.flashcards.find_one({"_id": ObjectId(card_id)})
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    correct, grade, match_type_canonical = _self_rating_to_progress(rating)
+    prior = count_session_attempts_for_card(
+        db,
+        session_id=sid_oid,
+        card_id=card_id,
+        user_id=user["user_id"],
+    )
+    is_first_attempt = prior == 0
+    rec_id = insert_study_record(
+        db,
+        user_id=user["user_id"],
+        session_id=sid_oid,
+        card_id=card_id,
+        user_answer="",
+        result="correct" if correct else "incorrect",
+        grade=grade,
+        match_type_canonical=match_type_canonical,
+        time_ms=req.time_ms,
+        is_first_attempt=is_first_attempt,
+        grading_mode="self_grade",
+        self_rating=rating,
+    )
+
+    answer_event = {
+        "card_id": card_id,
+        "response": "",
+        "self_rating": rating,
+        "grading_mode": "self_grade",
+        "result": "correct" if correct else "incorrect",
+        "grade": grade,
+        "match_type": match_type_canonical,
+        "match_type_legacy": rating,
+        "note": None,
+        "typo_highlight": None,
+        "time_ms": req.time_ms,
+        "ts": datetime.datetime.utcnow(),
+        "study_record_id": str(rec_id),
+    }
+    db.learning_sessions.update_one(
+        {"_id": sid_oid},
+        {
+            "$push": {
+                "answers": answer_event,
+                "study_record_ids": rec_id,
+            },
+            "$pop": {"queue": -1},
+            "$set": {
+                f"ratings.{card_id}": rating,
+                f"last_round_ratings.{card_id}": rating,
+            },
+        },
+    )
+    services.update_user_progress(
+        db,
+        user["user_id"],
+        card_id,
+        session["deck_id"],
+        correct,
+        grade,
+    )
+    sess_after = db.learning_sessions.find_one({"_id": sid_oid})
+    q_after = (sess_after or {}).get("queue") or []
+    ans_list = (sess_after or {}).get("answers") or []
+    round_complete = len(q_after) == 0
+    extra: dict = {}
+    if round_complete:
+        db.learning_sessions.update_one(
+            {"_id": sid_oid},
+            {"$set": {"pending_round_choice": True}},
+        )
+        lrr = (sess_after or {}).get("last_round_ratings") or {}
+        bd = {"known": 0, "unsure": 0, "forgot": 0}
+        for r in lrr.values():
+            if r in bd:
+                bd[r] += 1
+        extra = {
+            "round_complete": True,
+            "pending_round_choice": True,
+            "breakdown": bd,
+            "round_index": int((sess_after or {}).get("round_index") or 0),
+        }
+
+    out: dict = {
+        "result": answer_event["result"],
+        "grade": grade,
+        "match_type": match_type_canonical,
+        "session_answered": len(ans_list),
+        "session_correct": sum(1 for x in ans_list if x.get("result") == "correct"),
+        **extra,
+    }
+    out["card_back"] = card.get("back") or {}
+    fn = (card.get("note") or "").strip()
+    if fn:
+        out["flashcard_note"] = fn
+    fe = (card.get("example") or "").strip()
+    if fe:
+        out["flashcard_example"] = fe
+    return out
+
+
+@router.post("/learning/sessions/{session_id}/continue-round")
+def continue_self_grade_round(session_id: str, req: ContinueRoundRequest, user=Depends(get_current_user)):
+    try:
+        sid_oid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session = db.learning_sessions.find_one({"_id": sid_oid, "user_id": user["user_id"]})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.get("interaction_mode") != "self_grade":
+        raise HTTPException(status_code=400, detail="Not a self-grade session")
+    if not session.get("pending_round_choice"):
+        raise HTTPException(status_code=400, detail="No round break pending")
+    scope = (req.scope or "").strip().lower()
+    if scope not in ("weak", "all"):
+        raise HTTPException(status_code=400, detail="scope must be weak or all")
+
+    initial = list(session.get("initial_card_ids") or [])
+    last_rr = dict(session.get("last_round_ratings") or {})
+    if scope == "all":
+        new_queue = list(initial)
+        random.shuffle(new_queue)
+    else:
+        new_queue = [cid for cid, r in last_rr.items() if r in ("unsure", "forgot")]
+        random.shuffle(new_queue)
+        if not new_queue:
+            raise HTTPException(
+                status_code=400,
+                detail="No cards rated unsure or forgot in this round. Try reviewing the full deck or finish the session.",
+            )
+
+    new_round = int(session.get("round_index") or 0) + 1
+    db.learning_sessions.update_one(
+        {"_id": sid_oid},
+        {
+            "$set": {
+                "queue": new_queue,
+                "pending_round_choice": False,
+                "last_round_ratings": {},
+                "round_index": new_round,
+            },
+        },
+    )
+    return {"ok": True, "queue_length": len(new_queue), "round_index": new_round}
+
+
 @router.post("/learning/sessions/{session_id}/finish")
 def finish_session(session_id: str, user=Depends(get_current_user)):
     session = db.learning_sessions.find_one({"_id": ObjectId(session_id), "user_id": user["user_id"]})
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     ended_at = datetime.datetime.utcnow()
-    correct = sum(1 for a in session["answers"] if a["result"] == "correct")
-    total = len(session["answers"])
+    answers = session.get("answers") or []
+    correct = sum(1 for a in answers if a["result"] == "correct")
+    total = len(answers)
     accuracy = correct / total if total else 0
+    summary: dict = {"questions": total, "correct": correct, "accuracy": accuracy}
+    items: list[dict] = []
+    is_self_grade = session.get("interaction_mode") == "self_grade"
+
+    if is_self_grade:
+        last_by_cid: dict[str, dict] = {}
+        last_idx: dict[str, int] = {}
+        for i, a in enumerate(answers):
+            cid = a.get("card_id")
+            if not cid:
+                continue
+            cs = str(cid)
+            last_by_cid[cs] = a
+            last_idx[cs] = i
+        bd = {"known": 0, "unsure": 0, "forgot": 0}
+        for a in last_by_cid.values():
+            r = (str(a.get("self_rating") or "")).lower()
+            if r in bd:
+                bd[r] += 1
+        summary["self_grade"] = {
+            "cards": len(last_by_cid),
+            "known": bd["known"],
+            "unsure": bd["unsure"],
+            "forgot": bd["forgot"],
+        }
+        for cid in sorted(last_by_cid.keys(), key=lambda c: last_idx[c]):
+            a = last_by_cid[cid]
+            try:
+                oc = ObjectId(cid)
+            except InvalidId:
+                continue
+            fc = db.flashcards.find_one({"_id": oc})
+            items.append(
+                {
+                    "card_id": cid,
+                    "front": (fc or {}).get("front") or {},
+                    "back": (fc or {}).get("back") or {},
+                    "result": a.get("result"),
+                    "response": a.get("response"),
+                    "match_type": a.get("match_type"),
+                    "note": a.get("note"),
+                    "typo_highlight": a.get("typo_highlight"),
+                    "self_rating": a.get("self_rating"),
+                    "grading_mode": a.get("grading_mode", "typed"),
+                }
+            )
+    else:
+        for a in answers:
+            cid = a.get("card_id")
+            if not cid:
+                continue
+            try:
+                oc = ObjectId(cid)
+            except InvalidId:
+                continue
+            fc = db.flashcards.find_one({"_id": oc})
+            items.append(
+                {
+                    "card_id": cid,
+                    "front": (fc or {}).get("front") or {},
+                    "back": (fc or {}).get("back") or {},
+                    "result": a.get("result"),
+                    "response": a.get("response"),
+                    "match_type": a.get("match_type"),
+                    "note": a.get("note"),
+                    "typo_highlight": a.get("typo_highlight"),
+                    "self_rating": a.get("self_rating"),
+                    "grading_mode": a.get("grading_mode", "typed"),
+                }
+            )
+
     db.learning_sessions.update_one(
         {"_id": ObjectId(session_id)},
-        {"$set": {"ended_at": ended_at, "summary": {"questions": total, "correct": correct, "accuracy": accuracy}}},
+        {"$set": {"ended_at": ended_at, "summary": summary}},
     )
-    items: list[dict] = []
-    for a in session.get("answers") or []:
-        cid = a.get("card_id")
-        if not cid:
-            continue
+    return {
+        "summary": summary,
+        "items": items,
+        "interaction_mode": session.get("interaction_mode", "typed"),
+    }
+
+
+@router.get("/learning/history")
+def learning_history(
+    deck_id: str | None = None,
+    page: int = 1,
+    page_size: int = 30,
+    user=Depends(get_current_user),
+):
+    page = max(1, page)
+    page_size = min(max(1, page_size), 50)
+    skip = (page - 1) * page_size
+    q: dict = {"user_id": user["user_id"]}
+    if deck_id:
         try:
-            oc = ObjectId(cid)
+            ObjectId(deck_id)
         except InvalidId:
-            continue
-        fc = db.flashcards.find_one({"_id": oc})
-        items.append(
+            raise HTTPException(status_code=400, detail="Invalid deck_id")
+        deck = db.decks.find_one({"_id": ObjectId(deck_id), "owner_id": user["user_id"]})
+        if not deck:
+            raise HTTPException(status_code=404, detail="Deck not found")
+        q["deck_id"] = deck_id
+    total = db.learning_sessions.count_documents(q)
+    cur = (
+        db.learning_sessions.find(q)
+        .sort("started_at", -1)
+        .skip(skip)
+        .limit(page_size)
+    )
+    rows: list[dict] = []
+    for s in cur:
+        did = s.get("deck_id")
+        title = ""
+        if did:
+            d = db.decks.find_one({"_id": ObjectId(did), "owner_id": user["user_id"]})
+            if d:
+                title = str(d.get("title") or "")
+        sa = s.get("started_at")
+        ea = s.get("ended_at")
+        rows.append(
             {
-                "card_id": cid,
-                "front": (fc or {}).get("front") or {},
-                "back": (fc or {}).get("back") or {},
-                "result": a.get("result"),
-                "response": a.get("response"),
-                "match_type": a.get("match_type"),
-                "note": a.get("note"),
-                "typo_highlight": a.get("typo_highlight"),
+                "session_id": str(s["_id"]),
+                "deck_id": did,
+                "deck_title": title,
+                "started_at": (sa.isoformat() + "Z") if sa and hasattr(sa, "isoformat") else None,
+                "ended_at": (ea.isoformat() + "Z") if ea and hasattr(ea, "isoformat") else None,
+                "interaction_mode": s.get("interaction_mode", "typed"),
+                "summary": s.get("summary"),
+                "queue_meta": s.get("queue_meta"),
             }
         )
-    return {
-        "summary": {"questions": total, "correct": correct, "accuracy": accuracy},
-        "items": items,
-    }
+    return {"sessions": rows, "page": page, "page_size": page_size, "total": total}
+
+
+@router.get("/learning/sessions/{session_id}/detail")
+def get_learning_session_detail(session_id: str, user=Depends(get_current_user)):
+    try:
+        sid = ObjectId(session_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s = db.learning_sessions.find_one({"_id": sid, "user_id": user["user_id"]})
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    s["_id"] = str(s["_id"])
+    for k in ("study_record_ids",):
+        if k in s and isinstance(s[k], list):
+            s[k] = [str(x) if not isinstance(x, str) else x for x in s[k]]
+    return {"session": s}
 
 
 @router.get("/learning/weak-tags")

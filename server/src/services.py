@@ -110,6 +110,26 @@ def update_user_progress(
     )
 
 
+def build_self_grade_initial_queue(db: Any, deck_id: str) -> tuple[List[Any], dict]:
+    """All cards in deck, shuffled (self-grade study; no queue_size cap)."""
+    all_cards = list(db.flashcards.find({"deck_id": deck_id}))
+    if not all_cards:
+        return [], {
+            "strategy": "self_grade",
+            "mode": "learn",
+            "counts": {"total": 0},
+            "note": "Empty deck.",
+        }
+    random.shuffle(all_cards)
+    meta = {
+        "strategy": "self_grade",
+        "mode": "learn",
+        "counts": {"total": len(all_cards)},
+        "note": "Full deck, shuffled.",
+    }
+    return all_cards, meta
+
+
 def build_learning_queue(
     db: Any,
     deck_id: str,

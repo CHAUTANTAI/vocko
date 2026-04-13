@@ -8,14 +8,27 @@
           <h2 class="text-2xl font-semibold text-white">{{ deck.title }}</h2>
           <p v-if="deck.description" class="mt-1 text-slate-400">{{ deck.description }}</p>
         </div>
-        <NuxtLink
-          v-if="canStudy"
-          :to="`/learning/session?deck_id=${route.params.id}`"
-          class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
-        >
-          <Play class="h-4 w-4" />
-          Study deck
-        </NuxtLink>
+        <div v-if="canStudy" class="flex flex-wrap items-center gap-2">
+          <NuxtLink
+            :to="`/learning/session?deck_id=${route.params.id}`"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+          >
+            <Play class="h-4 w-4" />
+            Study deck
+          </NuxtLink>
+          <NuxtLink
+            :to="`/learning/session?deck_id=${route.params.id}&interaction=self_grade`"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-700/80 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-950/50"
+          >
+            Self-grade
+          </NuxtLink>
+          <NuxtLink
+            :to="`/learning/history?deck_id=${route.params.id}`"
+            class="text-sm text-slate-400 underline decoration-slate-600 hover:text-emerald-400"
+          >
+            Session history
+          </NuxtLink>
+        </div>
         <div
           v-else
           class="inline-flex flex-col items-stretch gap-1 sm:items-end"
