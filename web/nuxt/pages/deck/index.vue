@@ -97,26 +97,43 @@
           </NuxtLink>
           <span class="text-sm text-slate-500">{{ deck.card_count ?? 0 }} cards</span>
         </div>
-        <div class="flex shrink-0 items-center gap-2">
-          <NuxtLink
-            v-if="(deck.card_count ?? 0) > 0"
-            :to="`/learning/session?deck_id=${deck._id}`"
-            class="inline-flex items-center gap-1 rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
-            @click.stop
-          >
-            <Play class="h-3.5 w-3.5" />
-            Study
-          </NuxtLink>
-          <span
-            v-else
-            class="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-500 opacity-70"
-            title="Add cards to this deck before studying"
-            aria-label="Study unavailable: add cards to this deck first"
-            @click.stop
-          >
-            <Play class="h-3.5 w-3.5" />
-            Study
-          </span>
+        <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <template v-if="(deck.card_count ?? 0) > 0">
+            <NuxtLink
+              :to="`/learning/session?deck_id=${deck._id}`"
+              class="inline-flex items-center gap-1 rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+              @click.stop
+            >
+              <Play class="h-3.5 w-3.5" />
+              Study
+            </NuxtLink>
+            <NuxtLink
+              :to="`/learning/session?deck_id=${deck._id}&interaction=self_grade`"
+              class="inline-flex items-center gap-1 rounded-md border border-emerald-800/70 bg-emerald-950/25 px-2 py-1 text-xs font-medium text-emerald-200/90 hover:bg-emerald-950/45"
+              @click.stop
+            >
+              Self-grade
+            </NuxtLink>
+          </template>
+          <template v-else>
+            <span
+              class="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-500 opacity-70"
+              title="Add cards to this deck before studying"
+              aria-label="Study unavailable: add cards to this deck first"
+              @click.stop
+            >
+              <Play class="h-3.5 w-3.5" />
+              Study
+            </span>
+            <span
+              class="inline-flex cursor-not-allowed items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-500 opacity-70"
+              title="Add cards to this deck before self-grade"
+              aria-label="Self-grade unavailable: add cards to this deck first"
+              @click.stop
+            >
+              Self-grade
+            </span>
+          </template>
           <button
             type="button"
             class="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-red-400"
