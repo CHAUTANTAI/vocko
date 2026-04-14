@@ -116,6 +116,82 @@ class CardBatchCreate(BaseModel):
 
 BATCH_CARDS_MAX = 50
 
+SEARCH_Q_MAX_LEN = 120
+SEARCH_DECK_LIMIT_CAP = 50
+SEARCH_CARD_LIMIT_CAP = 100
+
+
+@router.get("/search")
+def global_search(
+    q: str = "",
+    limit_decks: int = 20,
+    limit_cards: int = 40,
+    user=Depends(get_current_user),
+):
+    """Search deck titles and card fronts for the current user (Mongo regex, case-insensitive)."""
+    raw = (q or "").strip()
+    if not raw:
+        return {"decks": [], "cards": []}
+    raw = raw[:SEARCH_Q_MAX_LEN]
+    limit_decks = min(max(1, limit_decks), SEARCH_DECK_LIMIT_CAP)
+    limit_cards = min(max(1, limit_cards), SEARCH_CARD_LIMIT_CAP)
+    owner_id = user["user_id"]
+    pattern = {"$regex": re.escape(raw), "$options": "i"}
+
+    decks_out: list[dict] = []
+    for d in (
+        db.decks.find({"owner_id": owner_id, "title": pattern}, {"title": 1, "created_at": 1})
+        .sort("created_at", -1)
+        .limit(limit_decks)
+    ):
+        decks_out.append({"_id": str(d["_id"]), "title": d.get("title") or ""})
+
+    pipeline = [
+        {"$match": {"deck_id": {"$regex": r"^[a-fA-F0-9]{24}$"}, "front.content": pattern}},
+        {
+            "$lookup": {
+                "from": "decks",
+                "let": {"did": "$deck_id"},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "$expr": {
+                                "$and": [
+                                    {"$eq": ["$owner_id", owner_id]},
+                                    {"$eq": ["$_id", {"$toObjectId": "$$did"}]},
+                                ],
+                            },
+                        },
+                    },
+                    {"$project": {"title": 1}},
+                ],
+                "as": "deck",
+            },
+        },
+        {"$match": {"deck": {"$ne": []}}},
+        {"$limit": limit_cards},
+        {
+            "$project": {
+                "_id": 1,
+                "deck_id": 1,
+                "front": 1,
+                "deck_title": {"$arrayElemAt": ["$deck.title", 0]},
+            },
+        },
+    ]
+    cards_out: list[dict] = []
+    for row in db.flashcards.aggregate(pipeline):
+        cards_out.append(
+            {
+                "_id": str(row["_id"]),
+                "deck_id": row.get("deck_id") or "",
+                "deck_title": row.get("deck_title") or "",
+                "front": row.get("front") or {},
+            }
+        )
+
+    return {"decks": decks_out, "cards": cards_out}
+
 
 @router.get("/decks")
 def list_decks(page: int = 1, page_size: int = 50, user=Depends(get_current_user)):
@@ -167,8 +243,19 @@ def create_deck(deck: DeckCreate, user=Depends(get_current_user)):
 
 
 @router.get("/decks/{deck_id}")
-def get_deck(deck_id: str, include_cards: bool = False, page: int = 1, limit: int = 50, user=Depends(get_current_user)):
-    deck = db.decks.find_one({"_id": ObjectId(deck_id), "owner_id": user["user_id"]})
+def get_deck(
+    deck_id: str,
+    include_cards: bool = False,
+    page: int = 1,
+    limit: int = 50,
+    focus_card_id: Optional[str] = None,
+    user=Depends(get_current_user),
+):
+    try:
+        did = ObjectId(deck_id)
+    except InvalidId:
+        raise HTTPException(status_code=404, detail="Deck not found")
+    deck = db.decks.find_one({"_id": did, "owner_id": user["user_id"]})
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
     deck["_id"] = str(deck["_id"])
@@ -177,6 +264,18 @@ def get_deck(deck_id: str, include_cards: bool = False, page: int = 1, limit: in
         skip = (page - 1) * limit
         cards = list(db.flashcards.find({"deck_id": deck_id}).skip(skip).limit(limit))
         out = [serialize_card(db, c) for c in cards]
+        if focus_card_id and str(focus_card_id).strip():
+            try:
+                fc = ObjectId(str(focus_card_id).strip())
+            except InvalidId:
+                fc = None
+            if fc is not None:
+                focused = db.flashcards.find_one({"_id": fc, "deck_id": deck_id})
+                if focused:
+                    ser = serialize_card(db, focused)
+                    existing = {c["_id"] for c in out}
+                    if ser["_id"] not in existing:
+                        out.insert(0, ser)
         return {"deck": deck, "cards": out}
     return {"deck": deck}
 

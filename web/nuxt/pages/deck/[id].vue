@@ -333,6 +333,7 @@
       <ul class="mt-6 space-y-2">
         <li
           v-for="card in displayedCards"
+          :id="'card-' + card._id"
           :key="card._id"
           class="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors sm:px-4"
           :class="
@@ -722,11 +723,41 @@ async function runTagSuggest() {
   }
 }
 
+function focusCardIdQueryParam(): string {
+  const q = route.query.card_id
+  const id =
+    typeof q === 'string'
+      ? q.trim()
+      : Array.isArray(q) && typeof q[0] === 'string'
+        ? q[0].trim()
+        : ''
+  return id ? `&focus_card_id=${encodeURIComponent(id)}` : ''
+}
+
+function applyQueryCardFocus() {
+  const q = route.query.card_id
+  const cid =
+    typeof q === 'string'
+      ? q.trim()
+      : Array.isArray(q) && typeof q[0] === 'string'
+        ? q[0].trim()
+        : ''
+  if (!cid) return
+  searchQuery.value = ''
+  nextTick(() => {
+    const el = document.getElementById(`card-${cid}`)
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const card = cards.value.find((c) => c._id === cid)
+    if (card) openEditCard(card)
+  })
+}
+
 async function fetchDeck() {
   pending.value = true
   try {
+    const id = route.params.id as string
     const data = await api<{ deck: Record<string, unknown>; cards?: CardRow[] }>(
-      `/decks/${route.params.id}?include_cards=true`,
+      `/decks/${id}?include_cards=true${focusCardIdQueryParam()}`,
     )
     deck.value = data.deck
     cards.value = data.cards || []
@@ -736,6 +767,8 @@ async function fetchDeck() {
   } finally {
     pending.value = false
   }
+  await nextTick()
+  applyQueryCardFocus()
 }
 
 async function loadDeckInsights() {
@@ -801,8 +834,9 @@ onMounted(async () => {
   await loadDeckInsights()
 })
 watch(
-  () => route.params.id as string,
-  async (id, prevId) => {
+  () => [route.params.id as string, route.query.card_id] as const,
+  async ([id], prev) => {
+    const prevId = prev?.[0]
     if (prevId !== undefined && prevId !== id) {
       formOpen.value = false
       resetCardFormState()
