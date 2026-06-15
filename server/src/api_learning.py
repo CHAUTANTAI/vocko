@@ -88,6 +88,18 @@ def _question_payload(card: dict, card_id: str, mode: str, *, include_back: bool
     pos = (card.get("part_of_speech") or "").strip()
     if pos:
         out["part_of_speech"] = pos
+    note = (card.get("note") or "").strip()
+    if note:
+        out["note"] = note
+    example = (card.get("example") or "").strip()
+    if example:
+        out["example"] = example
+    if card.get("media"):
+        out["media"] = card.get("media")
+    if card.get("pronunciation_us"):
+        out["pronunciation_us"] = card.get("pronunciation_us")
+    if card.get("pronunciation_uk"):
+        out["pronunciation_uk"] = card.get("pronunciation_uk")
     if include_back:
         out["back"] = card.get("back") or {}
     return out
