@@ -56,6 +56,14 @@ npm install
 npm run dev
 ```
 
+## Build and start frontend
+
+```bash
+cd web/nuxt
+npm run build
+npm run start
+```
+
 ## Tests (backend)
 
 ```bash

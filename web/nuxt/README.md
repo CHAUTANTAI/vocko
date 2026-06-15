@@ -8,10 +8,23 @@
 
 ```bash
 cd web/nuxt
-npx nuxi init .
 npm install
 npm run dev
 ```
+
+## Build and start
+
+```bash
+cd web/nuxt
+npm run build
+npm run start
+```
+
+## Environment
+
+Create `web/nuxt/.env` with at least:
+
+- `NUXT_PUBLIC_API_BASE` — API origin, for example `http://localhost:8000`
 
 ## Next Steps
 - Implement API calls to backend

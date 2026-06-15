@@ -100,6 +100,8 @@ class CardCreate(BaseModel):
     hint: Optional[str] = None
     note: Optional[str] = None
     example: Optional[str] = None
+    pronunciation_us: Optional[str] = None
+    pronunciation_uk: Optional[str] = None
     card_type: str = "vocab"
     part_of_speech: Optional[str] = None
     language: str = "en"

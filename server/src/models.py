@@ -29,6 +29,8 @@ class Flashcard(BaseModel):
     media: Optional[list]
     order_index: int
     tags: Optional[list]
+    pronunciation_us: Optional[str]
+    pronunciation_uk: Optional[str]
     created_at: datetime
     deleted: Optional[bool]
 

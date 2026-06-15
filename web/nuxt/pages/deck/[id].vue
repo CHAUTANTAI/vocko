@@ -217,6 +217,26 @@
                   />
                 </Field>
               </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Pronunciation (US)</label>
+                <Field name="pronunciation_us" v-slot="{ field }">
+                  <input
+                    v-bind="field"
+                    class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. /ˈpɑː.stə/"
+                  />
+                </Field>
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-400">Pronunciation (UK)</label>
+                <Field name="pronunciation_uk" v-slot="{ field }">
+                  <input
+                    v-bind="field"
+                    class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. /ˈpæs.tə/"
+                  />
+                </Field>
+              </div>
             </div>
             <div v-if="cardTypeLive === 'vocab'">
               <label class="mb-1 block text-xs font-medium text-slate-400">Part of speech</label>
@@ -370,6 +390,11 @@
             <span class="mx-2 text-slate-600">→</span>
             <span class="text-slate-400">{{ backPreview(card.back?.content) }}</span>
             <span v-if="card.hint" class="ml-2 text-xs text-amber-500/90">· hint</span>
+            <div v-if="card.pronunciation_us || card.pronunciation_uk" class="mt-1 text-[10px] text-slate-500">
+              <span v-if="card.pronunciation_us">US {{ card.pronunciation_us }}</span>
+              <span v-if="card.pronunciation_us && card.pronunciation_uk"> · </span>
+              <span v-if="card.pronunciation_uk">UK {{ card.pronunciation_uk }}</span>
+            </div>
           </span>
           <button
             type="button"
@@ -423,6 +448,8 @@ type CardRow = {
   hint?: string
   note?: string
   example?: string
+  pronunciation_us?: string
+  pronunciation_uk?: string
   card_type?: string
   part_of_speech?: string
   language?: string
@@ -487,6 +514,8 @@ const cardSchema = toTypedSchema(
       .string()
       .optional()
       .oneOf([...POS_VALUES, ''], 'Invalid part of speech'),
+    pronunciation_us: yup.string().optional(),
+    pronunciation_uk: yup.string().optional(),
     language: yup.string().default('en'),
   }),
 )
@@ -497,6 +526,8 @@ const cardFormInitial = {
   hint: '',
   note: '',
   example: '',
+  pronunciation_us: '',
+  pronunciation_uk: '',
   card_type: 'vocab',
   part_of_speech: '',
   language: 'en',
@@ -652,6 +683,8 @@ function openEditCard(card: CardRow) {
       hint: card.hint ?? '',
       note: card.note ?? '',
       example: card.example ?? '',
+      pronunciation_us: card.pronunciation_us ?? '',
+      pronunciation_uk: card.pronunciation_uk ?? '',
       card_type: ct === 'sentence' || ct === 'grammar' ? ct : 'vocab',
       part_of_speech: ct === 'vocab' ? (card.part_of_speech ?? '') : '',
       language: card.language ?? 'en',
@@ -802,6 +835,10 @@ function buildCardBody(formValues: Record<string, string | undefined>) {
       ? { new_tag_names: [...pendingNewTagNames.value] }
       : {}),
   }
+  const us = formValues.pronunciation_us?.trim()
+  const uk = formValues.pronunciation_uk?.trim()
+  if (us) body.pronunciation_us = us
+  if (uk) body.pronunciation_uk = uk
   const n = formValues.note
   const ex = formValues.example
   const h = formValues.hint?.trim()

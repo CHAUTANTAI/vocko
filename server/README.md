@@ -22,7 +22,16 @@ python src/init_indexes.py
 python -m uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+The backend does not require a separate build step; the Python app runs directly with `uvicorn`.
+
 Sau khi bật venv, luôn có thể dùng `python -m pip` thay cho `pip` nếu lệnh `pip` không có trong PATH.
+
+## Optional backend environment variables
+
+- `OPENROUTER_API_KEY` — optional; enables AI hints and approximate answer grading.
+- `OPENROUTER_MODEL_HINT` — OpenRouter model id for vocabulary hints.
+- `OPENROUTER_MODEL_GRADE` — OpenRouter model id for answer checking.
+- `OPENROUTER_BASE_URL` — optional override for the OpenRouter API base URL.
 
 ## Sử dụng MongoDB Atlas
 - Tạo cluster trên https://cloud.mongodb.com/
