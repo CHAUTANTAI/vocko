@@ -320,27 +320,28 @@
                         v-if="isSelfGradeSession && (question.card_type || question.part_of_speech || peekSelfGradePronunciations.length || peekSelfGradeMedia.length || peekSelfGradeNoteDisplay || peekSelfGradeExampleDisplay)"
                         class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-left text-sm text-slate-300"
                       >
-                        <div class="flex flex-wrap gap-2">
-                          <span
-                            v-if="question.card_type"
-                            class="rounded-full bg-slate-800 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400"
-                          >
-                            {{ question.card_type }}
-                          </span>
-                          <span
-                            v-if="question.card_type === 'vocab' && question.part_of_speech"
-                            class="rounded-full bg-slate-800 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400"
-                          >
-                            {{ partOfSpeechDisplayLabel(question.part_of_speech) }}
-                          </span>
-                        </div>
-
-                        <div v-if="peekSelfGradePronunciations.length" class="mt-4 space-y-1">
-                          <p class="text-xs uppercase tracking-wide text-slate-500">Pronunciation</p>
-                          <div class="space-y-1">
-                            <p v-for="line in peekSelfGradePronunciations" :key="line" class="text-sm text-slate-200">
-                              {{ line }}
-                            </p>
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span
+                              v-if="question.card_type"
+                              class="rounded-full bg-slate-800 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400"
+                            >
+                              {{ question.card_type }}
+                            </span>
+                            <span
+                              v-if="question.card_type === 'vocab' && question.part_of_speech"
+                              class="rounded-full bg-slate-800 px-2 py-1 text-[11px] uppercase tracking-wide text-slate-400"
+                            >
+                              {{ partOfSpeechDisplayLabel(question.part_of_speech) }}
+                            </span>
+                          </div>
+                          <div v-if="peekSelfGradePronunciations.length" class="min-w-[10rem]">
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Pronunciation</p>
+                            <div class="space-y-1">
+                              <p v-for="line in peekSelfGradePronunciations" :key="line" class="text-sm text-slate-200">
+                                {{ line }}
+                              </p>
+                            </div>
                           </div>
                         </div>
 
@@ -360,20 +361,22 @@
                           </div>
                         </div>
 
-                        <div v-if="peekSelfGradeNoteDisplay" class="mt-4">
-                          <p class="text-xs uppercase tracking-wide text-slate-500">Note</p>
-                          <div
-                            class="mt-1 prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
-                            v-html="peekSelfGradeNoteDisplay"
-                          ></div>
-                        </div>
+                        <div class="mt-4 space-y-4">
+                          <div v-if="peekSelfGradeNoteDisplay">
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Note</p>
+                            <div
+                              class="mt-1 prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
+                              v-html="peekSelfGradeNoteDisplay"
+                            ></div>
+                          </div>
 
-                        <div v-if="peekSelfGradeExampleDisplay" class="mt-4">
-                          <p class="text-xs uppercase tracking-wide text-slate-500">Example</p>
-                          <div
-                            class="mt-1 prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
-                            v-html="peekSelfGradeExampleDisplay"
-                          ></div>
+                          <div v-if="peekSelfGradeExampleDisplay">
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Example</p>
+                            <div
+                              class="mt-1 prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
+                              v-html="peekSelfGradeExampleDisplay"
+                            ></div>
+                          </div>
                         </div>
                       </div>
                       <div
