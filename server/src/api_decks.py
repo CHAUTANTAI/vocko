@@ -102,6 +102,9 @@ class CardCreate(BaseModel):
     example: Optional[str] = None
     pronunciation_us: Optional[str] = None
     pronunciation_uk: Optional[str] = None
+    cefr: Optional[str] = None
+    approx: Optional[str] = None
+    phrases: list[str] = Field(default_factory=list)
     card_type: str = "vocab"
     part_of_speech: Optional[str] = None
     language: str = "en"

@@ -395,6 +395,11 @@
               <span v-if="card.pronunciation_us && card.pronunciation_uk"> · </span>
               <span v-if="card.pronunciation_uk">UK {{ card.pronunciation_uk }}</span>
             </div>
+            <div class="mt-1 text-[10px] text-slate-400">
+              <span v-if="card.cefr" class="mr-2">CEFR: {{ card.cefr }}</span>
+              <span v-if="card.approx" class="mr-2">≈ {{ card.approx }}</span>
+              <span v-if="card.phrases && card.phrases.length"> · Phrases: {{ (card.phrases || []).slice(0,3).join(', ') }}</span>
+            </div>
           </span>
           <button
             type="button"
@@ -450,6 +455,9 @@ type CardRow = {
   example?: string
   pronunciation_us?: string
   pronunciation_uk?: string
+  cefr?: string
+  approx?: string
+  phrases?: string[]
   card_type?: string
   part_of_speech?: string
   language?: string
@@ -516,6 +524,9 @@ const cardSchema = toTypedSchema(
       .oneOf([...POS_VALUES, ''], 'Invalid part of speech'),
     pronunciation_us: yup.string().optional(),
     pronunciation_uk: yup.string().optional(),
+    cefr: yup.string().optional().oneOf(['A1','A2','B1','B2','C1','C2',''], 'Invalid CEFR'),
+    approx: yup.string().optional(),
+    phrases: yup.string().optional(),
     language: yup.string().default('en'),
   }),
 )
@@ -528,6 +539,9 @@ const cardFormInitial = {
   example: '',
   pronunciation_us: '',
   pronunciation_uk: '',
+  cefr: '',
+  approx: '',
+  phrases: '',
   card_type: 'vocab',
   part_of_speech: '',
   language: 'en',
@@ -839,6 +853,14 @@ function buildCardBody(formValues: Record<string, string | undefined>) {
   const uk = formValues.pronunciation_uk?.trim()
   if (us) body.pronunciation_us = us
   if (uk) body.pronunciation_uk = uk
+  const cefr = formValues.cefr?.trim()
+  const approx = formValues.approx?.trim()
+  const phrasesRaw = formValues.phrases?.trim()
+  if (cefr) body.cefr = cefr
+  if (approx) body.approx = approx
+  if (phrasesRaw) {
+    body.phrases = phrasesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+  }
   const n = formValues.note
   const ex = formValues.example
   const h = formValues.hint?.trim()

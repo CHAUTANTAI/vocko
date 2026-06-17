@@ -31,6 +31,9 @@ class Flashcard(BaseModel):
     tags: Optional[list]
     pronunciation_us: Optional[str]
     pronunciation_uk: Optional[str]
+    cefr: Optional[str]
+    approx: Optional[str]
+    phrases: Optional[list]
     created_at: datetime
     deleted: Optional[bool]
 

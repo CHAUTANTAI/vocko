@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "VocKO TOEIC Scanner",
+  "version": "0.1.0",
+  "description": "Scan the current TOEIC page DOM for candidate vocabulary items.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "VocKO TOEIC Scanner",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

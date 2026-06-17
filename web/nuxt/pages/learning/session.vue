@@ -396,6 +396,11 @@
                             </p>
                           </template>
                         </div>
+                        <div class="mt-3 text-xs text-slate-400">
+                          <span v-if="peekSelfGradeExtra.cefr" class="mr-3">CEFR: {{ peekSelfGradeExtra.cefr }}</span>
+                          <span v-if="peekSelfGradeExtra.approx" class="mr-3">≈ {{ peekSelfGradeExtra.approx }}</span>
+                          <span v-if="peekSelfGradeExtra.phrases.length">Phrases: {{ peekSelfGradeExtra.phrases.slice(0,3).join(', ') }}</span>
+                        </div>
                         <div
                           class="flex flex-wrap items-start justify-between gap-3"
                         >
@@ -512,6 +517,11 @@
                           class="mt-1 block max-w-full prose prose-invert prose-sm prose-p:my-1 prose-li:my-0.5 text-slate-300"
                           v-html="revealedExampleDisplay"
                         />
+                      </div>
+                      <div class="mt-3 text-xs text-slate-400">
+                        <span v-if="revealedExtra.cefr" class="mr-3">CEFR: {{ revealedExtra.cefr }}</span>
+                        <span v-if="revealedExtra.approx" class="mr-3">≈ {{ revealedExtra.approx }}</span>
+                        <span v-if="revealedExtra.phrases.length">Phrases: {{ revealedExtra.phrases.slice(0,3).join(', ') }}</span>
                       </div>
                       <p
                         v-if="canFlipCard || isSelfGradeSession"
@@ -978,6 +988,14 @@ const revealedBackDisplay = computed(() => {
   return sanitizeRichHtml(raw);
 });
 
+const revealedExtra = computed(() => {
+  return {
+    cefr: (question.value && question.value.cefr) || '',
+    approx: (question.value && question.value.approx) || '',
+    phrases: Array.isArray(question.value?.phrases) ? question.value?.phrases : [],
+  }
+})
+
 const revealedNoteDisplay = computed(() => {
   if (isEmptyRichText(revealedNote.value)) return "";
   return sanitizeRichHtml(revealedNote.value);
@@ -1054,6 +1072,14 @@ const peekSelfGradeBackHtml = computed(() => {
   if (isEmptyRichText(raw)) return "";
   return sanitizeRichHtml(raw || "");
 });
+
+const peekSelfGradeExtra = computed(() => {
+  return {
+    cefr: question.value?.cefr ?? '',
+    approx: question.value?.approx ?? '',
+    phrases: Array.isArray(question.value?.phrases) ? question.value?.phrases : [],
+  }
+})
 
 const peekSelfGradeNoteDisplay = computed(() => {
   const raw = question.value?.note;
