@@ -19,7 +19,7 @@ VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), f
 ## Change checklist
 
 1. Backend behavior → update route handlers + any local Pydantic models + callers in Nuxt.
-2. New Mongo fields → update serializers (`card_helpers.py` or `simple_services.py`), indexes if needed (`init_indexes.py`), then **run** `python src/init_indexes.py`.
+2. New Mongo fields → update serializers (`card_helpers.py` or `simple_services.py`), indexes in `init_indexes.py` (auto on startup / Render; optional CLI).
 3. Learning math → `services.py` + tests under `server/tests/`.
 4. UI study flow → `pages/learning/session.vue` + `Flashcard.vue`.
 
@@ -27,5 +27,6 @@ VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), f
 
 - API `127.0.0.1:8000`, web `127.0.0.1:3000`
 - `NUXT_PUBLIC_API_BASE`, `MONGO_URI`, `MONGO_DB`, `SECRET_KEY`, optional `OPENROUTER_*`
+- `SKIP_INIT_INDEXES=1` / `SKIP_DB_PING=1` — debug only (do not set on Render for normal deploys)
 
 Read `AGENTS.md` for the full map of modules and collections.

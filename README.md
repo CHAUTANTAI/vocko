@@ -75,4 +75,4 @@ python -m pytest
 
 - Frontend calls the API through `useApi()` (`composables/useApi.ts`) with `NUXT_PUBLIC_API_BASE`, JWT from Pinia, and one retry on 401 after refresh.
 - Learning modes: `learn` (new + due cards first) and `review` (due cards only).
-- **Simple Flashcards** (separate from vocab): routes under `/simple`, collections `simple_*`. After pulling index changes, run once: `cd server && python src/init_indexes.py`.
+- **Simple Flashcards** (separate from vocab): routes under `/simple`, collections `simple_*`. Mongo indexes are ensured automatically when the API process starts (e.g. Render); optional manual: `cd server && python src/init_indexes.py`.

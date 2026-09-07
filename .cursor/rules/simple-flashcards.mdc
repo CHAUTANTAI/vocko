@@ -11,7 +11,7 @@ Parallel module — **not** vocab `decks` / SM-2.
 ## Data
 
 - `simple_decks`, `simple_cards` (front/back strings only), `simple_card_stats`, `simple_learning_sessions`
-- Indexes via `python src/init_indexes.py` (not on server startup)
+- Indexes via `create_indexes` on FastAPI startup (Render) or `python src/init_indexes.py`
 
 ## API (`/simple/...`)
 

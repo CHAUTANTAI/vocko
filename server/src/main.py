@@ -14,6 +14,7 @@ from .api_learning import router as learning_router
 from .api_simple import router as simple_router
 from .api_tags import router as tags_router
 from .db import db
+from .init_indexes import create_indexes
 from .rate_limit import limiter
 
 app = FastAPI()
@@ -41,12 +42,28 @@ app.include_router(learning_router)
 app.include_router(tags_router)
 app.include_router(simple_router)
 
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes")
+
+
 @app.on_event("startup")
 def startup_db():
-    # Kiểm tra kết nối MongoDB khi khởi động (tắt bằng SKIP_DB_PING=1 khi debug deploy)
-    if os.getenv("SKIP_DB_PING", "").strip().lower() in ("1", "true", "yes"):
+    # SKIP_DB_PING=1 — skip ping + indexes (debug only)
+    if _env_flag("SKIP_DB_PING"):
         return
     db.command("ping")
+    # Indexes are idempotent. Runs automatically on Render when the web process starts
+    # (uses Render env: MONGO_URI / MONGO_DB). Disable with SKIP_INIT_INDEXES=1.
+    if _env_flag("SKIP_INIT_INDEXES"):
+        logger.info("SKIP_INIT_INDEXES set — skipping create_indexes")
+        return
+    try:
+        create_indexes(db)
+        logger.info("Mongo indexes ensured on startup")
+    except Exception:
+        logger.exception("Failed to create Mongo indexes on startup")
+        raise
 
 
 @app.on_event("startup")

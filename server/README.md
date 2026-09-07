@@ -41,13 +41,15 @@ Sau khi bật venv, luôn có thể dùng `python -m pip` thay cho `pip` nếu l
   MONGO_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=<appName>
   MONGO_DB=vocko
 
-## Kiểm tra kết nối
+## Kiểm tra kết nối / indexes
 
 ```bash
 python src/init_indexes.py
 ```
 
-Nếu thấy "Pinged your deployment. You successfully connected to MongoDB!" là OK.
+Nếu thấy "Pinged your deployment..." và "Indexes created." là OK.
+
+**Deploy (Render):** khi web process start, app **tự chạy** `create_indexes` (idempotent) bằng env đã cấu hình trên Render — không cần `.env` local và không cần chạy tay. Tắt bằng `SKIP_INIT_INDEXES=1` nếu cần.
 
 ## Next Steps
 - Bổ sung test tích hợp API, refresh token rotation, CORS chặt cho production

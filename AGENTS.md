@@ -27,7 +27,7 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 | AI hint/grade/explain | `server/src/learning_ai.py`, `openrouter_client.py` |
 | Card serialize / tags / POS | `server/src/card_helpers.py` |
 | TOEIC paste import | `server/src/api_import.py`, `toeic_*.py`, `data/toeic_*.txt` |
-| Indexes / migrations | `server/src/init_indexes.py` (run manually — not on uvicorn startup) |
+| Indexes / migrations | `server/src/init_indexes.py` — also auto-runs on FastAPI startup (Render); skip with `SKIP_INIT_INDEXES=1` |
 | Simple Flashcards | `server/src/api_simple.py`, `simple_services.py`; FE `web/nuxt/pages/simple/` |
 | Frontend API + 401 refresh | `web/nuxt/composables/useApi.ts` |
 | Auth state | `web/nuxt/stores/auth.ts`, `utils/authCookies.ts` |
@@ -94,7 +94,7 @@ Env: `server/.env` from `.env.example`; `web/nuxt/.env` needs `NUXT_PUBLIC_API_B
 - Change API payloads and callers together (backend + `useApi` / pages).
 - Prefer `useApi()` for authenticated calls; use Pinia auth, not ad-hoc tokens.
 - Prefer extending `Flashcard.vue` / existing pages over new parallel UI (except Simple module under `/simple`).
-- Keep Mongo indexes compatible with existing `.env` / Atlas setups; after index changes run `python src/init_indexes.py` once.
+- Keep Mongo indexes compatible with existing `.env` / Atlas setups; indexes auto-run on app startup (Render). Optional CLI: `python src/init_indexes.py`. Skip with `SKIP_INIT_INDEXES=1`.
 - Do not invent GitNexus or other removed tooling.
 - Do not commit secrets (`.env`).
 - Do not mix Simple Flashcards into vocab SM-2 / `flashcards`.
