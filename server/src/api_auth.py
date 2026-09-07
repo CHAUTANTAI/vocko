@@ -47,6 +47,8 @@ def signup(request: Request, req: SignupRequest):
     result = db.users.insert_one(user)
     user["_id"] = str(result.inserted_id)
     access_token = create_access_token({"user_id": user["_id"], "email": user["email"]})
+    # remember=True → long-lived refresh JWT (browser cookie also persistent).
+    # remember=False → short refresh JWT; frontend stores session cookies (cleared on browser close).
     rt_days = REFRESH_TOKEN_EXPIRE_DAYS if req.remember else REFRESH_TOKEN_EXPIRE_DAYS_SHORT
     refresh_token = create_refresh_token({"user_id": user["_id"]}, refresh_days=rt_days)
     return {"user": {"id": user["_id"], "display_name": user["display_name"], "email": user["email"]}, "access_token": access_token, "refresh_token": refresh_token}

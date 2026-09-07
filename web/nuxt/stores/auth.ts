@@ -3,10 +3,16 @@ import { clearAuthCookies, readRememberFlag, writeAuthCookies } from '~/utils/au
 
 export type AuthUser = { id: string; email: string; display_name: string }
 
+/**
+ * readonly: true — Pinia holds reactive values; persistence is only via
+ * writeAuthCookies / clearAuthCookies so Remember-me maxAge is not overwritten
+ * by useCookie's default session-cookie writes.
+ */
 const cookieBase = {
   sameSite: 'lax' as const,
   path: '/',
   watch: false as const,
+  readonly: true as const,
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -23,6 +29,18 @@ export const useAuthStore = defineStore('auth', () => {
     ...cookieBase,
   })
 
+  function applySession(
+    accessToken: string,
+    newRefreshToken: string,
+    nextUser: AuthUser | null | undefined,
+    remember: boolean,
+  ) {
+    token.value = accessToken
+    refreshToken.value = newRefreshToken
+    if (nextUser) user.value = nextUser
+    writeAuthCookies(accessToken, newRefreshToken, nextUser ?? user.value, remember)
+  }
+
   async function login(email: string, password: string, remember = true) {
     const config = useRuntimeConfig()
     const data = await $fetch<{
@@ -33,10 +51,7 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST',
       body: { email, password, remember },
     })
-    token.value = data.access_token
-    refreshToken.value = data.refresh_token
-    user.value = data.user
-    writeAuthCookies(data.access_token, data.refresh_token, data.user, remember)
+    applySession(data.access_token, data.refresh_token, data.user, remember)
   }
 
   async function register(email: string, password: string, display_name: string, remember = true) {
@@ -49,10 +64,7 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST',
       body: { email, password, display_name, remember },
     })
-    token.value = data.access_token
-    refreshToken.value = data.refresh_token
-    user.value = data.user
-    writeAuthCookies(data.access_token, data.refresh_token, data.user, remember)
+    applySession(data.access_token, data.refresh_token, data.user, remember)
   }
 
   function logout() {
@@ -71,11 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
         { method: 'POST', body: { refresh_token: refreshToken.value } },
       )
       const remember = readRememberFlag()
-      token.value = data.access_token
-      refreshToken.value = data.refresh_token
-      if (user.value) {
-        writeAuthCookies(data.access_token, data.refresh_token, user.value, remember)
-      }
+      applySession(data.access_token, data.refresh_token, user.value, remember)
       return true
     } catch {
       logout()
