@@ -1,0 +1,39 @@
+---
+description: Nuxt 3 frontend conventions for VocKO
+globs: web/nuxt/**/*.{vue,ts,js}
+alwaysApply: false
+---
+
+# Frontend (Nuxt 3)
+
+## Stack
+
+Nuxt 3 (`type: module`), Pinia, VeeValidate + Yup, VueUse, Tailwind (inline config in `nuxt.config.ts`), TipTap, Lucide, Fuse. Dev server: `127.0.0.1:3000`.
+
+## Must follow
+
+- Authenticated HTTP: `const { api } = useApi()` — never raw `$fetch` with manual Bearer except auth store login/register/refresh.
+- Auth: `useAuthStore()` + cookies (`vocko_at` / `vocko_rt` / `vocko_user`); respect `middleware/auth.ts` and `guest.ts`.
+- Layout/nav/search: `layouts/default.vue` (global `/search`).
+- Prefer `components/Flashcard.vue`, `ConfirmModal.vue`, `RichTextEditor.vue` over new one-offs.
+- Sanitize rich HTML via existing `utils/sanitizeRichHtml.ts` / `richText.ts`.
+
+## Pages map
+
+- Decks: `pages/deck/index.vue`, `pages/deck/[id].vue`
+- Study: `pages/learning/session.vue`, `history.vue`
+- Import: `pages/import/toeic-text.vue`
+
+## Config
+
+- API base from `runtimeConfig.public.apiBase` ← `NUXT_PUBLIC_API_BASE`
+- Keep dark slate/emerald look unless redesign is requested
+
+```ts
+// ❌ BAD
+await $fetch('/decks', { headers: { Authorization: `Bearer ${token}` } })
+
+// ✅ GOOD
+const { api } = useApi()
+await api('/decks')
+```

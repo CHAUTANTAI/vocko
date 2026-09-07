@@ -75,14 +75,3 @@ python -m pytest
 
 - Frontend calls the API through `useApi()` (`composables/useApi.ts`) with `NUXT_PUBLIC_API_BASE`, JWT from Pinia, and one retry on 401 after refresh.
 - Learning modes: `learn` (new + due cards first) and `review` (due cards only).
-
-## GitNexus (optional — MCP / code graph)
-
-Index repo này cho GitNexus MCP (Cursor, v.v.). Chi tiết, phân biệt **`Already up to date`** vs output có **`nodes | edges`**, và lệnh **`analyze --force`**: xem **[docs/gitnexus.md](docs/gitnexus.md)**.
-
-Tóm tắt — **ép index lại và xác nhận thành công** (có thống kê nodes/edges):
-
-```powershell
-cd <repo-root>
-node <path-to>\GitNexus\gitnexus\dist\cli\index.js analyze --force --skip-agents-md .
-```

@@ -1,0 +1,44 @@
+---
+description: FastAPI backend conventions for VocKO server
+globs: server/**/*.py
+alwaysApply: false
+---
+
+# Backend (FastAPI)
+
+## Layout
+
+- Entrypoint: `src/main.py` (CORS, SlowAPI, routers, startup Mongo ping + OpenRouter model logs)
+- Feature routers: `api_auth`, `api_decks`, `api_learning`, `api_tags`, `api_import`
+- Shared: `db.py` (`db` handle), `utils.py` (JWT/password), `services.py` (SRS)
+- Run indexes once: `python src/init_indexes.py`
+
+## Patterns
+
+- Protect routes with `get_current_user` + `Authorization: Bearer …` (`decode_token`).
+- Ownership: deck/card lookups must filter by `owner_id` / owned deck (see `api_decks._require_owned_card`).
+- Prefer ObjectId try/except → `404`, not 500.
+- Card create/update goes through `flashcard_doc_from_payload` / `serialize_card` / `set_card_tags`.
+- Tags: `tags` + junction `card_tags`; do not rely on only embedded tag names.
+- Rate-limit auth via SlowAPI (`rate_limit.py`).
+
+## Env / AI
+
+- Without `OPENROUTER_API_KEY`: exact/typo grading only; hint/AI endpoints error.
+- Distinct models: `OPENROUTER_MODEL_HINT`, `_GRADE`, `_TAG`, `_IMPORT` (import/tag fall back to hint).
+
+## Tests
+
+```bash
+cd server && python -m pytest
+```
+
+Add/adjust tests under `server/tests/` when changing matching, SRS, auth tokens, or study records.
+
+```python
+# ❌ BAD — new route not registered
+# only edit api_foo.py
+
+# ✅ GOOD — include in main.py
+app.include_router(foo_router)
+```

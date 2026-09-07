@@ -1,0 +1,33 @@
+---
+description: Learning sessions, SRS (SM-2), grading, and study records
+globs: server/src/api_learning.py,server/src/services.py,server/src/learning_*.py,server/src/answer_match.py,server/src/study_records.py,web/nuxt/pages/learning/**,web/nuxt/components/Flashcard.vue
+alwaysApply: false
+---
+
+# Learning & SRS
+
+## Session API (`api_learning.py`)
+
+- `POST /learning/sessions` — `mode`: `learn`|`review`; `options.interaction_mode`: `typed`|`self_grade`; optional `smart_queue`, `queue_size`
+- Flow: `next` → `answer` | `self-grade` | `hint` → `continue-round` → `finish`
+- Also: `history`, `detail`, `weak-tags`, `stats/summary`, `explain`
+
+## Progress (`services.py`)
+
+- SM-2 style: `ease_factor`, `repetition`, `interval_days`, `next_due_at`
+- Quality from correct/grade; fail resets rep; `recent_grades` window → difficulty bucket
+- Queues: standard `build_learning_queue*`, smart mix via `SMART_QUEUE_WEIGHTS` in `learning_config.py`, self-grade full-deck queue
+
+## Grading
+
+1. Exact match (case-insensitive) / one-typo highlight — `answer_match.py`
+2. Optional LLM grade — `learning_ai.grade_answer` if OpenRouter configured
+3. Self-grade maps: known→correct/5, unsure→correct/3, forgot→incorrect/0
+
+## Records
+
+Persist attempts with `study_records.insert_study_record` and canonical `match_type`. Keep history/stats consistent when changing answer paths.
+
+## Frontend
+
+`pages/learning/session.vue` owns session UX; keep typed vs self-grade paths coherent with backend options.

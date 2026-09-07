@@ -1,0 +1,32 @@
+---
+description: TOEIC text import, lemma pipeline, and scanner extension
+globs: server/src/api_import.py,server/src/toeic_*.py,server/src/tag_suggest.py,server/data/toeic_*.txt,web/nuxt/pages/import/**,localExtension/**
+alwaysApply: false
+---
+
+# TOEIC import & related
+
+## Paste import (primary)
+
+- Endpoint: `POST /import/toeic-vocab` (`api_import.py`)
+- Pipeline: preprocess (`toeic_preprocess.py` + `data/toeic_*.txt`) → spaCy lemma (`toeic_lemma.py`) → chunked OpenRouter extraction → card-ready terms
+- Model: `OPENROUTER_MODEL_IMPORT` or fallback to hint model; respect timeout clamps
+- POS must stay within `card_helpers.POS_WHITELIST`
+
+## Frontend
+
+- UI: `web/nuxt/pages/import/toeic-text.vue` — paste text, call import API, then typically batch-add into a deck via decks API
+
+## Tag suggest
+
+- `POST /tags/suggest` uses OpenRouter (`tag_suggest.py`); model falls back to hint when `OPENROUTER_MODEL_TAG` empty
+
+## Chrome extension
+
+- `localExtension/` MV3 scanner reads page DOM for candidate vocab
+- Standalone; not part of Nuxt build — do not assume it posts to the API unless you add that wiring
+
+## Careful
+
+- Large pastes are chunked; keep caps (`TOEIC_MAX_*`) unless product requires change
+- Do not commit API keys; import is no-op/errors without OpenRouter when AI is required

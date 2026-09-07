@@ -1,0 +1,30 @@
+---
+description: VocKO system map — stack, boundaries, where to edit
+alwaysApply: true
+---
+
+# VocKO overview
+
+VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), frontend `web/nuxt/` (Nuxt 3), optional OpenRouter AI, optional `localExtension/` TOEIC DOM scanner.
+
+## Boundaries
+
+- All authenticated API traffic: Bearer JWT; refresh via `/auth/refresh`.
+- Frontend must call API through `useApi()` (401 → one refresh retry).
+- Routers live in `server/src/api_*.py` and must be `include_router`’d in `main.py`.
+- `api_sources.py` is **not** mounted — treat as dead until wired.
+- GitNexus is removed; do not add it back.
+
+## Change checklist
+
+1. Backend behavior → update route handlers + any local Pydantic models + callers in Nuxt.
+2. New Mongo fields → update serializers (`card_helpers.py`), indexes if needed (`init_indexes.py`).
+3. Learning math → `services.py` + tests under `server/tests/`.
+4. UI study flow → `pages/learning/session.vue` + `Flashcard.vue`.
+
+## Ports / env
+
+- API `127.0.0.1:8000`, web `127.0.0.1:3000`
+- `NUXT_PUBLIC_API_BASE`, `MONGO_URI`, `MONGO_DB`, `SECRET_KEY`, optional `OPENROUTER_*`
+
+Read `AGENTS.md` for the full map of modules and collections.

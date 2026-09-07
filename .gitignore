@@ -9,9 +9,8 @@ web/nuxt/.output/
 web/nuxt/.nuxt/
 web/nuxt/.env
 
-# GitNexus local index
-.gitnexus/
-.cursor
+# Local IDE / agent (keep shared Cursor rules in git)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .claude
-.gitnexusignore
-docs/
