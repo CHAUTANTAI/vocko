@@ -14,11 +14,12 @@ VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), f
 - Routers live in `server/src/api_*.py` and must be `include_router`’d in `main.py`.
 - `api_sources.py` is **not** mounted — treat as dead until wired.
 - GitNexus is removed; do not add it back.
+- Simple Flashcards use `simple_*` collections and `/simple` routes — separate from vocab decks.
 
 ## Change checklist
 
 1. Backend behavior → update route handlers + any local Pydantic models + callers in Nuxt.
-2. New Mongo fields → update serializers (`card_helpers.py`), indexes if needed (`init_indexes.py`).
+2. New Mongo fields → update serializers (`card_helpers.py` or `simple_services.py`), indexes if needed (`init_indexes.py`), then **run** `python src/init_indexes.py`.
 3. Learning math → `services.py` + tests under `server/tests/`.
 4. UI study flow → `pages/learning/session.vue` + `Flashcard.vue`.
 

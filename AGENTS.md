@@ -27,7 +27,8 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 | AI hint/grade/explain | `server/src/learning_ai.py`, `openrouter_client.py` |
 | Card serialize / tags / POS | `server/src/card_helpers.py` |
 | TOEIC paste import | `server/src/api_import.py`, `toeic_*.py`, `data/toeic_*.txt` |
-| Indexes / migrations | `server/src/init_indexes.py` |
+| Indexes / migrations | `server/src/init_indexes.py` (run manually — not on uvicorn startup) |
+| Simple Flashcards | `server/src/api_simple.py`, `simple_services.py`; FE `web/nuxt/pages/simple/` |
 | Frontend API + 401 refresh | `web/nuxt/composables/useApi.ts` |
 | Auth state | `web/nuxt/stores/auth.ts`, `utils/authCookies.ts` |
 | Pages / routes | `web/nuxt/pages/` |
@@ -39,9 +40,12 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 
 `users`, `decks`, `flashcards`, `user_progress`, `learning_sessions`, `study_records`, `tags`, `card_tags`
 
+**Simple Flashcard (separate):** `simple_decks`, `simple_cards`, `simple_card_stats`, `simple_learning_sessions`
+
 - Deck owns cards; tags link via `card_tags` (not only embedded lists).
-- Soft-delete style: cards may have `deleted`.
-- Progress is per `(user_id, card_id)` with SM-2 fields + `recent_grades`.
+- Soft-delete style: vocab cards may have `deleted`.
+- Progress is per `(user_id, card_id)` with SM-2 fields + `recent_grades` (vocab only).
+- Simple study: Remembered/Forgot with requeue; `forget_count` on `simple_card_stats`.
 
 ## Learning product surface
 
@@ -59,6 +63,7 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 | `/deck`, `/deck/[id]` | Decks + cards (`middleware/auth.ts`) |
 | `/learning/session`, `/learning/history` | Study + history |
 | `/import/toeic-text` | Paste text → AI vocab extract |
+| `/simple`, `/simple/[id]`, `/simple/study` | Simple Flashcards (front/back only) |
 
 Stack: Nuxt 3 (`type: module`), Pinia, VeeValidate+Yup, VueUse, Tailwind, TipTap, Lucide, Fuse.
 
@@ -88,10 +93,11 @@ Env: `server/.env` from `.env.example`; `web/nuxt/.env` needs `NUXT_PUBLIC_API_B
 
 - Change API payloads and callers together (backend + `useApi` / pages).
 - Prefer `useApi()` for authenticated calls; use Pinia auth, not ad-hoc tokens.
-- Prefer extending `Flashcard.vue` / existing pages over new parallel UI.
-- Keep Mongo indexes compatible with existing `.env` / Atlas setups.
+- Prefer extending `Flashcard.vue` / existing pages over new parallel UI (except Simple module under `/simple`).
+- Keep Mongo indexes compatible with existing `.env` / Atlas setups; after index changes run `python src/init_indexes.py` once.
 - Do not invent GitNexus or other removed tooling.
 - Do not commit secrets (`.env`).
+- Do not mix Simple Flashcards into vocab SM-2 / `flashcards`.
 
 ## Cursor rules map
 
@@ -102,6 +108,7 @@ Env: `server/.env` from `.env.example`; `web/nuxt/.env` needs `NUXT_PUBLIC_API_B
 | `frontend-nuxt.mdc` | `web/nuxt/**` |
 | `learning-srs.mdc` | Learning / SRS files |
 | `import-toeic.mdc` | TOEIC import / lemma pipeline |
+| `simple-flashcards.mdc` | Simple decks/cards + requeue study |
 
 ## Docs
 

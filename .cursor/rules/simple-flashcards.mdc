@@ -1,0 +1,25 @@
+---
+description: Simple Flashcard module (separate simple_decks, requeue study)
+globs: server/src/api_simple.py,server/src/simple_services.py,web/nuxt/pages/simple/**,web/nuxt/components/SimpleFlashcard.vue
+alwaysApply: false
+---
+
+# Simple Flashcards
+
+Parallel module — **not** vocab `decks` / SM-2.
+
+## Data
+
+- `simple_decks`, `simple_cards` (front/back strings only), `simple_card_stats`, `simple_learning_sessions`
+- Indexes via `python src/init_indexes.py` (not on server startup)
+
+## API (`/simple/...`)
+
+- CRUD decks/cards + `GET /simple/search?q=` (title, front, back)
+- Study: start → grade `{remembered}` → forgot requeues to end; stats `forget_count` / `remember_count`
+- Do not call `services.update_user_progress`
+
+## FE
+
+- `/simple`, `/simple/:id`, `/simple/study?deck_id=`
+- Nav link **Simple**; use `useApi()` + `SimpleFlashcard.vue`

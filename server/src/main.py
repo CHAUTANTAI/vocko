@@ -11,6 +11,7 @@ from .api_auth import router as auth_router
 from .api_decks import router as decks_router
 from .api_import import router as import_router
 from .api_learning import router as learning_router
+from .api_simple import router as simple_router
 from .api_tags import router as tags_router
 from .db import db
 from .rate_limit import limiter
@@ -38,6 +39,7 @@ app.include_router(decks_router)
 app.include_router(import_router)
 app.include_router(learning_router)
 app.include_router(tags_router)
+app.include_router(simple_router)
 
 @app.on_event("startup")
 def startup_db():
