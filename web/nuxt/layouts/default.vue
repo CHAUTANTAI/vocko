@@ -1,17 +1,19 @@
 <template>
-  <div class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="min-h-[100dvh] min-h-screen bg-slate-950 text-slate-100">
     <header
       class="border-b border-slate-800 bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-slate-900/60"
     >
       <div
         class="mx-auto flex max-w-5xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4"
       >
-        <div class="flex items-center justify-between gap-4 sm:contents">
+        <div class="flex items-center justify-between gap-3 sm:contents">
           <NuxtLink to="/" class="flex shrink-0 items-center gap-2 font-semibold tracking-tight text-emerald-400 sm:order-1">
             <BookOpen class="h-6 w-6" aria-hidden="true" />
             VocKO
           </NuxtLink>
-          <nav class="flex shrink-0 items-center gap-3 text-sm sm:order-3 sm:ml-auto">
+          <nav
+            class="flex max-w-[70%] shrink flex-wrap items-center justify-end gap-1 text-sm sm:order-3 sm:ml-auto sm:max-w-none sm:gap-3"
+          >
             <template v-if="auth.token">
               <NuxtLink
                 to="/deck"
@@ -37,14 +39,14 @@
               >
                 History
               </NuxtLink>
-              <span class="max-w-[10rem] truncate text-slate-500">{{ auth.user?.display_name }}</span>
+              <span class="hidden max-w-[8rem] truncate text-slate-500 sm:inline">{{ auth.user?.display_name }}</span>
               <button
                 type="button"
                 class="inline-flex items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-slate-300 hover:border-slate-600 hover:text-white"
                 @click="onLogout"
               >
                 <LogOut class="h-4 w-4" />
-                Log out
+                <span class="hidden sm:inline">Log out</span>
               </button>
             </template>
             <template v-else>
@@ -135,7 +137,7 @@
         </div>
       </div>
     </header>
-    <main class="mx-auto max-w-5xl px-4 py-8">
+    <main class="mx-auto w-full max-w-5xl px-4 py-6 sm:py-8">
       <slot />
     </main>
   </div>

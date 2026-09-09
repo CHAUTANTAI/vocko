@@ -4,4 +4,23 @@
 
 html {
   @apply antialiased;
+  /* Fill the visual viewport when pinch-zoomed out (avoid white letterboxing). */
+  background-color: #020617; /* slate-950 */
+  color-scheme: dark;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+body {
+  background-color: #020617;
+  color: #f1f5f9; /* slate-100 */
+  min-height: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  overscroll-behavior-y: none;
+}
+
+#__nuxt {
+  min-height: 100%;
+  min-height: 100dvh;
 }

@@ -40,6 +40,22 @@ export default defineNuxtConfig({
     },
   },
   css: ['~/assets/css/main.css'],
+  app: {
+    head: {
+      htmlAttrs: {
+        lang: 'en',
+        class: 'bg-slate-950',
+      },
+      meta: [
+        {
+          name: 'viewport',
+          content: 'width=device-width, initial-scale=1, viewport-fit=cover',
+        },
+        { name: 'theme-color', content: '#020617' },
+        { name: 'color-scheme', content: 'dark' },
+      ],
+    },
+  },
   runtimeConfig: {
     public: {
       // Fallback; Nuxt merges `NUXT_PUBLIC_API_BASE` from the environment (no `process.env` needed here).
