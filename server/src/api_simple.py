@@ -114,6 +114,19 @@ class CardBatchCreate(BaseModel):
     cards: list[CardCreate] = Field(default_factory=list)
 
 
+class CardSyncUpdate(BaseModel):
+    id: str
+    front: str
+    back: str
+
+
+class CardSyncRequest(BaseModel):
+    """One round-trip: apply creates, updates, deletes for a deck."""
+    create: list[CardCreate] = Field(default_factory=list)
+    update: list[CardSyncUpdate] = Field(default_factory=list)
+    delete_ids: list[str] = Field(default_factory=list)
+
+
 class StartSessionRequest(BaseModel):
     deck_id: str
 
@@ -122,6 +135,17 @@ class GradeRequest(BaseModel):
     card_id: str
     remembered: bool
     time_ms: int = 0
+
+
+class StudyEventItem(BaseModel):
+    card_id: str
+    remembered: bool
+    time_ms: int = 0
+
+
+class CompleteSessionRequest(BaseModel):
+    """Client-run queue: flush all grades in one request when the session ends."""
+    events: list[StudyEventItem] = Field(default_factory=list)
 
 
 @router.get("/decks")
@@ -273,6 +297,85 @@ def create_cards_batch(deck_id: str, req: CardBatchCreate, user=Depends(get_curr
     return {"cards": [_card_payload(d) for d in docs]}
 
 
+@router.post("/decks/{deck_id}/cards/sync")
+def sync_cards(deck_id: str, req: CardSyncRequest, user=Depends(get_current_user)):
+    """Apply draft creates/updates/deletes in one request (fewer cold-start round-trips)."""
+    _, oid = _require_owned_deck(deck_id, user["user_id"])
+    if len(req.create) > 200 or len(req.update) > 200 or len(req.delete_ids) > 200:
+        raise HTTPException(status_code=400, detail="Max 200 items per sync list")
+
+    deleted = 0
+    for raw_id in req.delete_ids:
+        try:
+            cid = ObjectId(raw_id)
+        except InvalidId:
+            continue
+        card = db.simple_cards.find_one({"_id": cid, "deck_id": deck_id})
+        if not card:
+            continue
+        db.simple_cards.delete_one({"_id": cid})
+        db.simple_card_stats.delete_many({"card_id": raw_id})
+        deleted += 1
+
+    updated = 0
+    now = datetime.datetime.utcnow()
+    for item in req.update:
+        try:
+            cid = ObjectId(item.id)
+        except InvalidId:
+            raise HTTPException(status_code=400, detail=f"Invalid card id: {item.id}")
+        card = db.simple_cards.find_one({"_id": cid, "deck_id": deck_id})
+        if not card:
+            raise HTTPException(status_code=404, detail=f"Card not found: {item.id}")
+        front = _normalize_side(item.front, required=True)
+        back = _normalize_side(item.back, required=True)
+        db.simple_cards.update_one(
+            {"_id": cid},
+            {"$set": {"front": front, "back": back, "updated_at": now}},
+        )
+        updated += 1
+
+    created_docs: list[dict] = []
+    if req.create:
+        last = db.simple_cards.find_one({"deck_id": deck_id}, sort=[("order_index", -1)])
+        order_index = int(last.get("order_index") or 0) + 1 if last else 0
+        for item in req.create:
+            front = _normalize_side(item.front, required=True)
+            back = _normalize_side(item.back, required=True)
+            created_docs.append(
+                {
+                    "deck_id": deck_id,
+                    "front": front,
+                    "back": back,
+                    "order_index": order_index,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+            order_index += 1
+        result = db.simple_cards.insert_many(created_docs)
+        for doc, _id in zip(created_docs, result.inserted_ids):
+            doc["_id"] = _id
+
+    real_count = db.simple_cards.count_documents({"deck_id": deck_id})
+    db.simple_decks.update_one(
+        {"_id": oid},
+        {"$set": {"card_count": real_count, "updated_at": datetime.datetime.utcnow()}},
+    )
+
+    cards = list(
+        db.simple_cards.find({"deck_id": deck_id}).sort([("order_index", 1), ("_id", 1)])
+    )
+    deck = db.simple_decks.find_one({"_id": oid})
+    return {
+        "created": len(created_docs),
+        "updated": updated,
+        "deleted": deleted,
+        "deck": serialize_simple_deck(deck),
+        "cards": [_card_payload(c) for c in cards],
+    }
+
+
 @router.patch("/cards/{card_id}")
 def patch_card(card_id: str, req: CardPatch, user=Depends(get_current_user)):
     card, cid, _ = _require_owned_card(card_id, user["user_id"])
@@ -411,17 +514,28 @@ def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
         "ended_at": None,
         "queue": queue,
         "initial_count": len(queue),
+        "initial_card_ids": list(queue),
         "events": [],
         "summary": None,
+        "client_queue": True,
     }
     ins = db.simple_learning_sessions.insert_one(session)
     session_id = str(ins.inserted_id)
-    first = db.simple_cards.find_one({"_id": ObjectId(queue[0])})
+    by_id = {
+        str(c["_id"]): c
+        for c in db.simple_cards.find({"deck_id": req.deck_id})
+    }
+    cards = []
+    for cid in queue:
+        doc = by_id.get(cid)
+        if doc:
+            cards.append(_card_payload(doc))
     return {
         "session_id": session_id,
-        "remaining": len(queue),
-        "initial_count": len(queue),
-        "card": _card_payload(first) if first else None,
+        "remaining": len(cards),
+        "initial_count": len(cards),
+        "card": cards[0] if cards else None,
+        "cards": cards,
     }
 
 
@@ -528,6 +642,78 @@ def grade_card(session_id: str, req: GradeRequest, user=Depends(get_current_user
         "card": _card_payload(next_card_doc) if next_card_doc else None,
         "summary": summary,
     }
+
+
+@router.post("/learning/sessions/{session_id}/complete")
+def complete_session(session_id: str, req: CompleteSessionRequest, user=Depends(get_current_user)):
+    """Persist all client-side grades in one round-trip (stats + session summary)."""
+    sid = _oid(session_id, "Session not found")
+    session = db.simple_learning_sessions.find_one({"_id": sid, "user_id": user["user_id"]})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.get("ended_at") and session.get("summary"):
+        return {"ok": True, "summary": session["summary"]}
+    if len(req.events) > 5000:
+        raise HTTPException(status_code=400, detail="Too many events")
+
+    deck_id = session["deck_id"]
+    owned_ids = {
+        str(c["_id"])
+        for c in db.simple_cards.find({"deck_id": deck_id}, {"_id": 1})
+    }
+    # Also allow ids that were in the initial session queue (deleted mid-session edge case)
+    for cid in session.get("queue") or []:
+        owned_ids.add(str(cid))
+    for cid in session.get("initial_card_ids") or []:
+        owned_ids.add(str(cid))
+
+    events: list[dict] = []
+    now = datetime.datetime.utcnow()
+    for item in req.events:
+        if item.card_id not in owned_ids:
+            raise HTTPException(status_code=400, detail=f"Card not in deck: {item.card_id}")
+        remembered = bool(item.remembered)
+        result = "remembered" if remembered else "forgot"
+        events.append(
+            {
+                "card_id": item.card_id,
+                "result": result,
+                "ts": now,
+                "time_ms": max(0, int(item.time_ms or 0)),
+            }
+        )
+        upsert_simple_card_stat(
+            db,
+            user_id=user["user_id"],
+            card_id=item.card_id,
+            deck_id=deck_id,
+            remembered=remembered,
+        )
+
+    preview = session_summary_preview(
+        {
+            **session,
+            "queue": [],
+            "events": events,
+        }
+    )
+    summary = {**preview, "duration_ms": None}
+    started = session.get("started_at")
+    if started:
+        summary["duration_ms"] = int((now - started).total_seconds() * 1000)
+
+    db.simple_learning_sessions.update_one(
+        {"_id": sid},
+        {
+            "$set": {
+                "ended_at": now,
+                "summary": summary,
+                "queue": [],
+                "events": events,
+            }
+        },
+    )
+    return {"ok": True, "summary": summary}
 
 
 @router.post("/learning/sessions/{session_id}/finish")

@@ -16,10 +16,12 @@ Parallel module — **not** vocab `decks` / SM-2.
 ## API (`/simple/...`)
 
 - CRUD decks/cards + `GET /simple/search?q=` (title, front, back)
-- Study: start → grade `{remembered}` → forgot requeues to end; stats `forget_count` / `remember_count`
+- Deck editor: draft locally, then `POST /simple/decks/{id}/cards/sync` `{create, update, delete_ids}` in one round-trip
+- Study: start returns full shuffled `cards`; Forgot/Remembered run client-side; `POST .../complete` flushes events + stats once
 - Do not call `services.update_user_progress`
 
 ## FE
 
-- `/simple`, `/simple/:id`, `/simple/study?deck_id=`
+- `/simple`, `/simple/:id` (draft + Save), `/simple/study?deck_id=`
 - Nav link **Simple**; use `useApi()` + `SimpleFlashcard.vue`
+- On `/simple/:id`: add/edit/delete are local until Save; search filters draft client-side
