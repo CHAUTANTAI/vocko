@@ -1,7 +1,10 @@
-export default defineNuxtRouteMiddleware(() => {
+export default defineNuxtRouteMiddleware(async () => {
   const auth = useAuthStore()
-  const t = auth.token
-  if (t === null || t === undefined || t === '') {
-    return navigateTo('/login')
+  if (auth.token) return
+  // Access cookie may be gone while refresh (remember-me) is still valid.
+  if (auth.refreshToken) {
+    const ok = await auth.tryRefresh()
+    if (ok) return
   }
+  return navigateTo('/login')
 })

@@ -3,12 +3,6 @@ import { parse, serialize } from 'cookie-es'
 /** Must match server `REFRESH_TOKEN_EXPIRE_DAYS` when remember is on. */
 export const REFRESH_DAYS_LONG = 30
 
-/**
- * Access JWT is short-lived (server ~15m); cookie only needs to survive until refresh.
- * Keep a modest persistent max-age when remember=true so the jar stays coherent.
- */
-const ACCESS_MAX_AGE_SEC = 60 * 60 * 12
-
 const COOKIE_OPTS = { path: '/', sameSite: 'lax' as const }
 
 export type AuthUserPayload = { id: string; email: string; display_name: string }
@@ -32,10 +26,13 @@ export function writeAuthCookies(
   remember: boolean,
 ): void {
   if (!import.meta.client) return
+  // Keep access cookie in the jar as long as refresh when remembering, so returning
+  // after >12h still has auth cookies (JWT may be expired; middleware/API will refresh).
   const rtMaxAge = 60 * 60 * 24 * REFRESH_DAYS_LONG
+  const atMaxAge = remember ? rtMaxAge : 60 * 60 * 12
   const rm = remember ? '1' : '0'
   const chunks = [
-    serialize('vocko_at', accessToken, persistOpts(remember, ACCESS_MAX_AGE_SEC)),
+    serialize('vocko_at', accessToken, persistOpts(remember, atMaxAge)),
     serialize('vocko_rt', refreshToken, persistOpts(remember, rtMaxAge)),
     serialize('vocko_rm', rm, persistOpts(remember, rtMaxAge)),
   ]

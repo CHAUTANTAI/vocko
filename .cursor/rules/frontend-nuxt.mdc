@@ -14,6 +14,7 @@ Nuxt 3 (`type: module`), Pinia, VeeValidate + Yup, VueUse, Tailwind (inline conf
 
 - Authenticated HTTP: `const { api } = useApi()` — never raw `$fetch` with manual Bearer except auth store login/register/refresh.
 - Keep-alive (Render free): client plugin pings `GET /health` after 10m without API traffic while the tab is open (`plugins/apiKeepAlive.client.ts`).
+- Remember me: persistent cookies ~30d for at/rt; on return, `authRestore` + auth middleware call `tryRefresh` if access missing but refresh present.
 - Auth: `useAuthStore()` + cookies (`vocko_at` / `vocko_rt` / `vocko_user` / `vocko_rm`). Remember me → persistent cookies (30d); unchecked → session cookies only. Persist only via `writeAuthCookies` (`useCookie` is readonly). Respect `middleware/auth.ts` and `guest.ts`.
 - Layout/nav/search: `layouts/default.vue` (global `/search`).
 - Prefer `components/Flashcard.vue`, `ConfirmModal.vue`, `RichTextEditor.vue` over new one-offs.

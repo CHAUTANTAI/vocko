@@ -1,7 +1,10 @@
-export default defineNuxtRouteMiddleware(() => {
+export default defineNuxtRouteMiddleware(async () => {
   const auth = useAuthStore()
-  const t = auth.token
-  if (t) {
+  if (auth.token) {
     return navigateTo('/deck')
+  }
+  if (auth.refreshToken) {
+    const ok = await auth.tryRefresh()
+    if (ok) return navigateTo('/deck')
   }
 })
