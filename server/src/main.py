@@ -43,6 +43,12 @@ app.include_router(tags_router)
 app.include_router(simple_router)
 
 
+@app.get("/health")
+def health():
+    """Lightweight keep-alive for free-tier hosts (no DB)."""
+    return {"ok": True}
+
+
 def _env_flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in ("1", "true", "yes")
 

@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { touchApiActivity } from '~/utils/apiActivity'
 import { clearAuthCookies, readRememberFlag, writeAuthCookies } from '~/utils/authCookies'
 
 export type AuthUser = { id: string; email: string; display_name: string }
@@ -43,6 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(email: string, password: string, remember = true) {
     const config = useRuntimeConfig()
+    touchApiActivity()
     const data = await $fetch<{
       access_token: string
       refresh_token: string
@@ -51,11 +53,13 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST',
       body: { email, password, remember },
     })
+    touchApiActivity()
     applySession(data.access_token, data.refresh_token, data.user, remember)
   }
 
   async function register(email: string, password: string, display_name: string, remember = true) {
     const config = useRuntimeConfig()
+    touchApiActivity()
     const data = await $fetch<{
       access_token: string
       refresh_token: string
@@ -64,6 +68,7 @@ export const useAuthStore = defineStore('auth', () => {
       method: 'POST',
       body: { email, password, display_name, remember },
     })
+    touchApiActivity()
     applySession(data.access_token, data.refresh_token, data.user, remember)
   }
 
@@ -78,10 +83,12 @@ export const useAuthStore = defineStore('auth', () => {
     if (!refreshToken.value) return false
     try {
       const config = useRuntimeConfig()
+      touchApiActivity()
       const data = await $fetch<{ access_token: string; refresh_token: string }>(
         `${config.public.apiBase}/auth/refresh`,
         { method: 'POST', body: { refresh_token: refreshToken.value } },
       )
+      touchApiActivity()
       const remember = readRememberFlag()
       applySession(data.access_token, data.refresh_token, user.value, remember)
       return true
