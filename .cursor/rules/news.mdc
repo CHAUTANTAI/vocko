@@ -1,0 +1,28 @@
+---
+description: Daily News (VnExpress RSS + AI Vietnamese summaries)
+globs: server/src/api_news.py,server/src/news_pipeline.py,web/nuxt/pages/news/**
+alwaysApply: false
+---
+
+# Daily News
+
+Separate module — not vocab SM-2 / Simple flashcards.
+
+## Data
+
+- Collection `news_digests`: one doc per VN calendar day (`YYYY-MM-DD`, UTC+7)
+- Fields: `status` (`building`|`ready`|`failed`), `built_at`, `domestic[]`, `world[]`, `source`, `error?`
+- Item shape: `{ title, url, summary, published_at? }`
+- Unique index on `date` via `create_indexes`
+
+## Pipeline
+
+- RSS: `vnexpress.net/rss/thoi-su.rss` (domestic), `the-gioi.rss` (world); top 5 each
+- Summarize with OpenRouter (`OPENROUTER_MODEL_NEWS` → else HINT → `openrouter/free`)
+- Lazy build on `GET /news/today`; Mongo lock avoids stampede; `POST /news/refresh` force (1/hour)
+
+## API / FE
+
+- Auth JWT; router `api_news.py` mounted in `main.py`
+- FE `/news` + nav **News**; `useApi()` with long timeout for first build of the day
+- Always link to original VnExpress URL; attribution “Nguồn: VnExpress”

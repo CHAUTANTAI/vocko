@@ -11,6 +11,7 @@ from .api_auth import router as auth_router
 from .api_decks import router as decks_router
 from .api_import import router as import_router
 from .api_learning import router as learning_router
+from .api_news import router as news_router
 from .api_simple import router as simple_router
 from .api_tags import router as tags_router
 from .db import db
@@ -41,6 +42,7 @@ app.include_router(import_router)
 app.include_router(learning_router)
 app.include_router(tags_router)
 app.include_router(simple_router)
+app.include_router(news_router)
 
 
 @app.get("/health")
@@ -79,6 +81,7 @@ def startup_log_openrouter_models():
     grade_env = os.getenv("OPENROUTER_MODEL_GRADE", "")
     tag_env = os.getenv("OPENROUTER_MODEL_TAG", "")
     import_env = os.getenv("OPENROUTER_MODEL_IMPORT", "")
+    news_env = os.getenv("OPENROUTER_MODEL_NEWS", "")
     logger.info(
         "OPENROUTER_MODEL_HINT env raw: %r (empty=%s)",
         hint_env,
@@ -99,14 +102,21 @@ def startup_log_openrouter_models():
         import_env,
         not import_env.strip(),
     )
+    logger.info(
+        "OPENROUTER_MODEL_NEWS env raw: %r (empty=%s) — if empty, uses HINT model",
+        news_env,
+        not news_env.strip(),
+    )
     from .api_import import _model_import
     from .learning_ai import _model_grade, _model_hint
+    from .news_pipeline import _model_news
     from .tag_suggest import _model_tag
 
     logger.info(
-        "OpenRouter resolved: hint=%r grade=%r tag_suggest=%r import=%r",
+        "OpenRouter resolved: hint=%r grade=%r tag_suggest=%r import=%r news=%r",
         _model_hint(),
         _model_grade(),
         _model_tag(),
         _model_import(),
+        _model_news(),
     )

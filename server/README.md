@@ -31,6 +31,7 @@ Sau khi bật venv, luôn có thể dùng `python -m pip` thay cho `pip` nếu l
 - `OPENROUTER_API_KEY` — optional; enables AI hints and approximate answer grading.
 - `OPENROUTER_MODEL_HINT` — OpenRouter model id for vocabulary hints.
 - `OPENROUTER_MODEL_GRADE` — OpenRouter model id for answer checking.
+- `OPENROUTER_MODEL_NEWS` — optional; daily news summaries (`/news`). Empty = same as HINT.
 - `OPENROUTER_BASE_URL` — optional override for the OpenRouter API base URL.
 
 ## Sử dụng MongoDB Atlas

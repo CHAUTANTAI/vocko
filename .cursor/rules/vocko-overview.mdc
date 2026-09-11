@@ -15,6 +15,7 @@ VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), f
 - `api_sources.py` is **not** mounted — treat as dead until wired.
 - GitNexus is removed; do not add it back.
 - Simple Flashcards use `simple_*` collections and `/simple` routes — separate from vocab decks.
+- Daily News uses `news_digests` and `/news` — separate from learning.
 
 ## Change checklist
 

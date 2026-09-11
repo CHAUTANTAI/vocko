@@ -28,6 +28,12 @@
                 Simple
               </NuxtLink>
               <NuxtLink
+                to="/news"
+                class="rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-white"
+              >
+                News
+              </NuxtLink>
+              <NuxtLink
                 to="/import/toeic-text"
                 class="rounded-md px-2 py-1 text-slate-300 hover:bg-slate-800 hover:text-white"
               >

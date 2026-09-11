@@ -73,6 +73,8 @@ def create_indexes(database: Any) -> None:
     database.simple_card_stats.create_index([("user_id", 1), ("forget_count", -1)])
     database.simple_learning_sessions.create_index([("user_id", 1), ("started_at", -1)])
     database.simple_learning_sessions.create_index([("user_id", 1), ("deck_id", 1), ("started_at", -1)])
+    # Daily news digests (VnExpress)
+    database.news_digests.create_index("date", unique=True)
     migrate_flashcard_defaults(database)
     migrate_unset_flashcard_source_id(database)
     seed_tags(database)
