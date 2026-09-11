@@ -54,23 +54,17 @@
 
     <div class="mt-6 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
       <h3 class="text-sm font-medium text-slate-200">Add card</h3>
-      <p class="mt-1 text-xs text-slate-500">Adds to the local draft — click Save to persist.</p>
+      <p class="mt-1 text-xs text-slate-500">
+        Bold / italic / lists supported. Adds to the local draft — click Save to persist.
+      </p>
       <div class="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <label class="mb-1 block text-xs text-slate-400">Front</label>
-          <textarea
-            v-model="newFront"
-            rows="2"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
+          <RichTextEditor v-model="newFront" />
         </div>
         <div>
           <label class="mb-1 block text-xs text-slate-400">Back</label>
-          <textarea
-            v-model="newBack"
-            rows="2"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-          />
+          <RichTextEditor v-model="newBack" />
         </div>
       </div>
       <button
@@ -102,16 +96,14 @@
         }"
       >
         <div v-if="editingId === card._id" class="grid gap-2 sm:grid-cols-2">
-          <textarea
-            v-model="editFront"
-            rows="2"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-          />
-          <textarea
-            v-model="editBack"
-            rows="2"
-            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-          />
+          <div>
+            <label class="mb-1 block text-xs text-slate-400">Front</label>
+            <RichTextEditor v-model="editFront" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-slate-400">Back</label>
+            <RichTextEditor v-model="editBack" />
+          </div>
           <div class="flex gap-2 sm:col-span-2">
             <button
               type="button"
@@ -130,10 +122,16 @@
           </div>
         </div>
         <div v-else class="flex flex-wrap items-start justify-between gap-3">
-          <div class="min-w-0 flex-1">
-            <p class="text-sm font-medium text-slate-100">{{ card.front }}</p>
-            <p class="mt-1 text-sm text-slate-400">{{ card.back }}</p>
-            <p v-if="card._id.startsWith('tmp_')" class="mt-1 text-[10px] uppercase tracking-wide text-emerald-500/80">
+          <div class="min-w-0 flex-1 space-y-1">
+            <div
+              class="prose prose-invert prose-sm max-w-none font-medium text-slate-100"
+              v-html="previewHtml(card.front)"
+            />
+            <div
+              class="prose prose-invert prose-sm max-w-none text-slate-400"
+              v-html="previewHtml(card.back)"
+            />
+            <p v-if="card._id.startsWith('tmp_')" class="text-[10px] uppercase tracking-wide text-emerald-500/80">
               New (draft)
             </p>
           </div>
@@ -178,7 +176,7 @@
       <ul v-if="stats.hard_cards?.length" class="mt-3 space-y-1">
         <li v-for="h in stats.hard_cards" :key="h.card_id" class="text-xs text-slate-400">
           <span class="text-amber-300/90">{{ h.forget_count }}× forgot</span>
-          — {{ h.front }}
+          — {{ plainPreview(h.front) }}
         </li>
       </ul>
     </div>
@@ -189,6 +187,8 @@
 import { Play } from 'lucide-vue-next'
 import { useEventListener } from '@vueuse/core'
 import { onBeforeRouteLeave } from 'vue-router'
+import { htmlToPlainText, isEmptyRichText } from '~/utils/richText'
+import { sanitizeRichHtml } from '~/utils/sanitizeRichHtml'
 
 definePageMeta({
   layout: 'default',
@@ -209,9 +209,7 @@ const { api } = useApi()
 const deckId = computed(() => String(route.params.id || ''))
 
 const deck = ref<SimpleDeck | null>(null)
-/** Last saved snapshot from server */
 const savedCards = ref<SimpleCard[]>([])
-/** Working copy the user edits */
 const draftCards = ref<SimpleCard[]>([])
 const deletedIds = ref<Set<string>>(new Set())
 const error = ref('')
@@ -231,12 +229,33 @@ const stats = ref<{
   hard_cards: { card_id: string; front: string; forget_count: number }[]
 } | null>(null)
 
+function plainPreview(html: string) {
+  return htmlToPlainText(html) || '—'
+}
+
+function previewHtml(raw: string) {
+  const clean = sanitizeRichHtml(raw)
+  if (clean.includes('<')) return clean
+  const plain = htmlToPlainText(raw)
+  if (!plain) return '<p></p>'
+  return `<p>${plain
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')}</p>`
+}
+
+function normalizeSide(html: string) {
+  return sanitizeRichHtml(html).trim()
+}
+
 const filteredDraftCards = computed(() => {
   const q = searchQ.value.trim().toLowerCase()
   const list = draftCards.value
   if (!q) return list
   return list.filter(
-    (c) => c.front.toLowerCase().includes(q) || c.back.toLowerCase().includes(q),
+    (c) =>
+      htmlToPlainText(c.front).toLowerCase().includes(q) ||
+      htmlToPlainText(c.back).toLowerCase().includes(q),
   )
 })
 
@@ -288,9 +307,9 @@ async function loadStats() {
 }
 
 function addDraftCard() {
-  const front = newFront.value.trim()
-  const back = newBack.value.trim()
-  if (!front || !back) return
+  const front = normalizeSide(newFront.value)
+  const back = normalizeSide(newBack.value)
+  if (isEmptyRichText(front) || isEmptyRichText(back)) return
   tmpSeq += 1
   draftCards.value.push({
     _id: `tmp_${Date.now()}_${tmpSeq}`,
@@ -310,9 +329,9 @@ function startEdit(card: SimpleCard) {
 }
 
 function applyEdit(id: string) {
-  const front = editFront.value.trim()
-  const back = editBack.value.trim()
-  if (!front || !back) return
+  const front = normalizeSide(editFront.value)
+  const back = normalizeSide(editBack.value)
+  if (isEmptyRichText(front) || isEmptyRichText(back)) return
   const idx = draftCards.value.findIndex((c) => c._id === id)
   if (idx < 0) return
   draftCards.value[idx] = { ...draftCards.value[idx], front, back }
@@ -349,7 +368,7 @@ function discardChanges() {
 function buildSyncPayload() {
   const create = draftCards.value
     .filter((c) => c._id.startsWith('tmp_'))
-    .map((c) => ({ front: c.front, back: c.back }))
+    .map((c) => ({ front: normalizeSide(c.front), back: normalizeSide(c.back) }))
 
   const savedMap = new Map(savedCards.value.map((c) => [c._id, c]))
   const update = draftCards.value
@@ -358,7 +377,11 @@ function buildSyncPayload() {
       const s = savedMap.get(c._id)
       return !s || s.front !== c.front || s.back !== c.back
     })
-    .map((c) => ({ id: c._id, front: c.front, back: c.back }))
+    .map((c) => ({
+      id: c._id,
+      front: normalizeSide(c.front),
+      back: normalizeSide(c.back),
+    }))
 
   const delete_ids = [...deletedIds.value]
   return { create, update, delete_ids }

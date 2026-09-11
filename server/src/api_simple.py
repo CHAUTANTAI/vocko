@@ -23,7 +23,7 @@ from .utils import decode_token
 
 router = APIRouter(prefix="/simple", tags=["simple"])
 
-TEXT_MAX = 2000
+TEXT_MAX = 8_000
 SEARCH_Q_MAX = 120
 SEARCH_LIMIT_CAP = 40
 

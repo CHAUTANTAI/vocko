@@ -12,7 +12,7 @@
       </button>
     </div>
     <p class="mt-2 text-sm text-slate-400">
-      Plain front/back cards. Study with Remembered / Forgot — forgotten cards return to the end of the queue.
+      Plain front/back cards with basic formatting. Study with Remembered / Forgot — forgotten cards return to the end of the queue.
     </p>
 
     <div
