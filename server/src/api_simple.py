@@ -13,11 +13,13 @@ from pydantic import BaseModel, Field
 from .db import db
 from .simple_services import (
     apply_grade_to_queue,
+    build_quick_5_queue,
     build_simple_queue,
     serialize_simple_card,
     serialize_simple_deck,
     session_summary_preview,
     upsert_simple_card_stat,
+    weakness_score,
 )
 from .utils import decode_token
 
@@ -129,7 +131,8 @@ class CardSyncRequest(BaseModel):
 
 class StartSessionRequest(BaseModel):
     deck_id: str
-
+    # "all" = full shuffle; "quick_5" = top weak cards by forget - remember
+    mode: str = "all"
 
 class GradeRequest(BaseModel):
     card_id: str
@@ -479,7 +482,10 @@ def deck_stats(deck_id: str, user=Depends(get_current_user)):
     totals = agg[0] if agg else {"forget_total": 0, "remember_total": 0}
     hard = []
     for r in rows:
-        if int(r.get("forget_count") or 0) <= 0:
+        fc = int(r.get("forget_count") or 0)
+        rc = int(r.get("remember_count") or 0)
+        score = weakness_score(fc, rc)
+        if score <= 0:
             continue
         card = db.simple_cards.find_one({"_id": ObjectId(r["card_id"])}, {"front": 1, "back": 1})
         hard.append(
@@ -487,10 +493,12 @@ def deck_stats(deck_id: str, user=Depends(get_current_user)):
                 "card_id": r["card_id"],
                 "front": (card or {}).get("front") or "",
                 "back": (card or {}).get("back") or "",
-                "forget_count": int(r.get("forget_count") or 0),
-                "remember_count": int(r.get("remember_count") or 0),
+                "forget_count": fc,
+                "remember_count": rc,
+                "weakness_score": score,
             }
         )
+    hard.sort(key=lambda x: (x["weakness_score"], x["forget_count"]), reverse=True)
     return {
         "deck_id": deck_id,
         "forget_total": int(totals.get("forget_total") or 0),
@@ -503,13 +511,25 @@ def deck_stats(deck_id: str, user=Depends(get_current_user)):
 @router.post("/learning/sessions")
 def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
     _require_owned_deck(req.deck_id, user["user_id"])
-    queue = build_simple_queue(db, req.deck_id)
-    if not queue:
-        raise HTTPException(status_code=400, detail="No cards in this deck")
+    mode = (req.mode or "all").strip().lower()
+    if mode not in ("all", "quick_5"):
+        raise HTTPException(status_code=400, detail="mode must be all or quick_5")
+    if mode == "quick_5":
+        queue = build_quick_5_queue(db, deck_id=req.deck_id, user_id=user["user_id"])
+        if not queue:
+            raise HTTPException(
+                status_code=400,
+                detail="No weak cards yet. Study the full deck and mark Forgot on hard cards first.",
+            )
+    else:
+        queue = build_simple_queue(db, req.deck_id)
+        if not queue:
+            raise HTTPException(status_code=400, detail="No cards in this deck")
     now = datetime.datetime.utcnow()
     session = {
         "user_id": user["user_id"],
         "deck_id": req.deck_id,
+        "mode": mode,
         "started_at": now,
         "ended_at": None,
         "queue": queue,
@@ -532,6 +552,7 @@ def start_session(req: StartSessionRequest, user=Depends(get_current_user)):
             cards.append(_card_payload(doc))
     return {
         "session_id": session_id,
+        "mode": mode,
         "remaining": len(cards),
         "initial_count": len(cards),
         "card": cards[0] if cards else None,

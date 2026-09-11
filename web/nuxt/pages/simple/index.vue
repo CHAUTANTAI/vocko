@@ -75,6 +75,13 @@
             <Play class="h-3.5 w-3.5" />
             Study
           </NuxtLink>
+          <NuxtLink
+            v-if="(deck.card_count ?? 0) > 0"
+            :to="`/simple/study?deck_id=${deck._id}&mode=quick_5`"
+            class="inline-flex items-center gap-1 rounded-md border border-amber-800/60 px-2 py-1 text-xs text-amber-100 hover:bg-amber-950/40"
+          >
+            5 phút
+          </NuxtLink>
           <button
             type="button"
             class="rounded-md border border-red-900/60 px-2 py-1 text-xs text-red-300 hover:bg-red-950/40"

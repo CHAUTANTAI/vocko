@@ -18,6 +18,7 @@ Parallel module — **not** vocab `decks` / SM-2.
 - CRUD decks/cards + `GET /simple/search?q=` (title, front, back)
 - Deck editor: draft locally, then `POST /simple/decks/{id}/cards/sync` `{create, update, delete_ids}` in one round-trip
 - Study: start returns full shuffled `cards`; Forgot/Remembered run client-side; `POST .../complete` flushes events + stats once
+- Quick 5 min: `mode=quick_5` ranks by `weakness_score = forget_count - remember_count` (only score > 0, max 12); FE `/simple/study?deck_id=&mode=quick_5`
 - Do not call `services.update_user_progress`
 
 ## FE

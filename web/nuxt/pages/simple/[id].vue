@@ -38,6 +38,13 @@
           <Play class="h-4 w-4" />
           Study
         </NuxtLink>
+        <NuxtLink
+          v-if="savedCards.length && !isDirty"
+          :to="`/simple/study?deck_id=${deck._id}&mode=quick_5`"
+          class="inline-flex items-center gap-2 rounded-lg border border-amber-800/60 px-4 py-2 text-sm text-amber-100 hover:bg-amber-950/40"
+        >
+          Ôn 5 phút
+        </NuxtLink>
         <span
           v-else-if="draftCards.length"
           class="inline-flex cursor-not-allowed items-center gap-2 rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-500"

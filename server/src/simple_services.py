@@ -5,6 +5,14 @@ import random
 from datetime import datetime
 from typing import Any
 
+# ~25s/card → ~5 minutes; only cards with positive weakness score
+QUICK_5_LIMIT = 12
+
+
+def weakness_score(forget_count: int, remember_count: int) -> int:
+    """Net forget pressure: forgets minus remembers (higher = harder / review first)."""
+    return int(forget_count or 0) - int(remember_count or 0)
+
 
 def build_simple_queue(db: Any, deck_id: str) -> list[str]:
     """Shuffle all card ids in a simple deck."""
@@ -12,6 +20,40 @@ def build_simple_queue(db: Any, deck_id: str) -> list[str]:
     ids = [str(c["_id"]) for c in cards]
     random.shuffle(ids)
     return ids
+
+
+def build_quick_5_queue(
+    db: Any,
+    *,
+    deck_id: str,
+    user_id: str,
+    limit: int = QUICK_5_LIMIT,
+) -> list[str]:
+    """
+    Cards ranked by weakness_score = forget_count - remember_count (desc).
+    Only score > 0. Caps at `limit` for a short session.
+    """
+    card_ids = [str(c["_id"]) for c in db.simple_cards.find({"deck_id": deck_id}, {"_id": 1})]
+    if not card_ids:
+        return []
+    stats_by_card = {
+        str(r["card_id"]): r
+        for r in db.simple_card_stats.find(
+            {"user_id": user_id, "deck_id": deck_id},
+            {"card_id": 1, "forget_count": 1, "remember_count": 1},
+        )
+    }
+    ranked: list[tuple[int, int, str]] = []
+    for cid in card_ids:
+        st = stats_by_card.get(cid) or {}
+        fc = int(st.get("forget_count") or 0)
+        rc = int(st.get("remember_count") or 0)
+        score = weakness_score(fc, rc)
+        if score <= 0:
+            continue
+        ranked.append((score, fc, cid))
+    ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return [cid for _, _, cid in ranked[: max(1, int(limit))]]
 
 
 def apply_grade_to_queue(queue: list[str], card_id: str, remembered: bool) -> list[str]:

@@ -3,8 +3,10 @@ from datetime import datetime
 
 from src.simple_services import (
     apply_grade_to_queue,
+    build_quick_5_queue,
     session_summary_preview,
     upsert_simple_card_stat,
+    weakness_score,
 )
 
 
@@ -92,3 +94,37 @@ def test_upsert_simple_card_stat_forget_then_remember():
     assert doc["remember_count"] == 1
     assert doc["last_result"] == "remembered"
     assert isinstance(doc["last_reviewed_at"], datetime)
+    assert weakness_score(doc["forget_count"], doc["remember_count"]) == 1
+
+
+def test_weakness_score():
+    assert weakness_score(5, 1) == 4
+    assert weakness_score(3, 0) == 3
+    assert weakness_score(3, 3) == 0
+    assert weakness_score(1, 4) == -3
+
+
+def test_build_quick_5_queue_orders_by_net_forget():
+    cards = [{"_id": "a"}, {"_id": "b"}, {"_id": "c"}, {"_id": "d"}]
+    stats = [
+        {"card_id": "a", "forget_count": 5, "remember_count": 1},  # 4
+        {"card_id": "b", "forget_count": 3, "remember_count": 0},  # 3
+        {"card_id": "c", "forget_count": 2, "remember_count": 2},  # 0 excluded
+        {"card_id": "d", "forget_count": 1, "remember_count": 0},  # 1
+    ]
+
+    class CardsCol:
+        def find(self, q, proj=None):
+            return cards
+
+    class StatsCol:
+        def find(self, q, proj=None):
+            return stats
+
+    db = type("DB", (), {})()
+    db.simple_cards = CardsCol()
+    db.simple_card_stats = StatsCol()
+    q = build_quick_5_queue(db, deck_id="d1", user_id="u1", limit=12)
+    assert q == ["a", "b", "d"]
+    q2 = build_quick_5_queue(db, deck_id="d1", user_id="u1", limit=2)
+    assert q2 == ["a", "b"]
