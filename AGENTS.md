@@ -9,7 +9,7 @@ Cursor loads this file plus `.cursor/rules/*.mdc` (scoped by path). Prefer those
 ```
 Browser (Nuxt :3000)
   └─ useApi() + Pinia auth (JWT cookies) → FastAPI (:8000)
-       ├─ api_auth / api_decks / api_learning / api_tags / api_import / api_simple / api_news
+       ├─ api_auth / api_decks / api_learning / api_tags / api_import / api_simple / api_news / api_storage
        ├─ services.py (SRS SM-2 + queues)
        ├─ MongoDB `vocko`
        └─ OpenRouter (optional: hint, grade, explain, tag suggest, TOEIC import, news summary)
@@ -30,6 +30,7 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 | Indexes / migrations | `server/src/init_indexes.py` — also auto-runs on FastAPI startup (Render); skip with `SKIP_INIT_INDEXES=1` |
 | Simple Flashcards | `server/src/api_simple.py`, `simple_services.py`; FE `web/nuxt/pages/simple/` |
 | Daily News (VnExpress) | `server/src/api_news.py`, `news_pipeline.py`; FE `web/nuxt/pages/news/` |
+| File + text storage | `server/src/api_storage.py`; FE `web/nuxt/pages/storage/` |
 | Frontend API + 401 refresh | `web/nuxt/composables/useApi.ts` |
 | Auth state | `web/nuxt/stores/auth.ts`, `utils/authCookies.ts` |
 | Pages / routes | `web/nuxt/pages/` |
@@ -44,6 +45,8 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 **Simple Flashcard (separate):** `simple_decks`, `simple_cards`, `simple_card_stats`, `simple_learning_sessions`
 
 **Daily News:** `news_digests` (one digest per VN day; domestic + world summaries)
+
+**Storage:** `user_storage` (per-user file `binary_data` + free-form `contents`)
 
 - Deck owns cards; tags link via `card_tags` (not only embedded lists).
 - Soft-delete style: vocab cards may have `deleted`.
@@ -69,6 +72,7 @@ localExtension/ — MV3 “VocKO TOEIC Scanner” (DOM scan; not wired into Nuxt
 | `/import/toeic-text` | Paste text → AI vocab extract |
 | `/simple`, `/simple/[id]`, `/simple/study` | Simple Flashcards (front/back only) |
 | `/news` | Daily VnExpress highlights (VI summaries) |
+| `/storage` | Upload file + save unlimited notes |
 
 Stack: Nuxt 3 (`type: module`), Pinia, VeeValidate+Yup, VueUse, Tailwind, TipTap, Lucide, Fuse.
 
@@ -115,6 +119,7 @@ Env: `server/.env` from `.env.example`; `web/nuxt/.env` needs `NUXT_PUBLIC_API_B
 | `import-toeic.mdc` | TOEIC import / lemma pipeline |
 | `simple-flashcards.mdc` | Simple decks/cards + requeue study |
 | `news.mdc` | Daily News (VnExpress RSS + AI summaries) |
+| `storage.mdc` | File upload + text notes (`user_storage`) |
 
 ## Docs
 

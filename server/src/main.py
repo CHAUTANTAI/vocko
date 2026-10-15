@@ -13,6 +13,7 @@ from .api_import import router as import_router
 from .api_learning import router as learning_router
 from .api_news import router as news_router
 from .api_simple import router as simple_router
+from .api_storage import router as storage_router
 from .api_tags import router as tags_router
 from .db import db
 from .init_indexes import create_indexes
@@ -43,6 +44,7 @@ app.include_router(learning_router)
 app.include_router(tags_router)
 app.include_router(simple_router)
 app.include_router(news_router)
+app.include_router(storage_router)
 
 
 @app.get("/health")

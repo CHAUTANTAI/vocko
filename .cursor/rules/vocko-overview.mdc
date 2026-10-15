@@ -16,6 +16,7 @@ VocKO = vocabulary flashcards + SM-2 SRS. Backend `server/` (FastAPI/PyMongo), f
 - GitNexus is removed; do not add it back.
 - Simple Flashcards use `simple_*` collections and `/simple` routes — separate from vocab decks.
 - Daily News uses `news_digests` and `/news` — separate from learning.
+- Storage uses `user_storage` and `/storage` — file Binary + text notes per user.
 
 ## Change checklist
 

@@ -75,6 +75,8 @@ def create_indexes(database: Any) -> None:
     database.simple_learning_sessions.create_index([("user_id", 1), ("deck_id", 1), ("started_at", -1)])
     # Daily news digests (VnExpress)
     database.news_digests.create_index("date", unique=True)
+    # User file + text storage
+    database.user_storage.create_index([("user_id", 1), ("updated_at", -1)])
     migrate_flashcard_defaults(database)
     migrate_unset_flashcard_source_id(database)
     seed_tags(database)

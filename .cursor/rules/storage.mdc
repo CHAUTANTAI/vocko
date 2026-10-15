@@ -1,0 +1,25 @@
+---
+description: User file + text storage (Mongo Binary)
+globs: server/src/api_storage.py,web/nuxt/pages/storage/**
+alwaysApply: false
+---
+
+# Storage
+
+Separate module — not learning / Simple / News.
+
+## Data
+
+- Collection `user_storage`: `{ user_id, title, contents, filename, content_type, file_size, binary_data, created_at, updated_at }`
+- `binary_data` is BSON `Binary` (max ~12 MB — under Mongo 16 MB doc limit)
+- Index `(user_id, updated_at)` via `create_indexes`
+
+## API (`/storage`)
+
+- Auth JWT; multipart form for create/update (`title`, `contents`, optional `file`, update may send `clear_file=1`)
+- `GET /storage`, `GET /storage/{id}`, `GET /storage/{id}/file`, `POST /storage`, `PUT /storage/{id}`, `DELETE /storage/{id}`
+- List responses omit `binary_data` and usually omit full `contents`
+
+## FE
+
+- `/storage` + nav **Storage**; Save sends `FormData` via `useApi()`
